@@ -6,33 +6,37 @@ Cloudra is a modern, privacy-focused desktop cloud storage client that leverages
 
 ## 🌟 Features
 
-### 🚀 unlimited Storage
-- **Zero Types Limits**: Upload files of any type.
+### 🚀 Unlimited Cloud Storage
+- **Zero Types Limits**: Upload files of any type (Documents, Photos, Videos, etc.).
 - **2GB Single File Limit**: Upload individual files up to 2GB (4GB for Premium users).
 - **Unlimited Total Space**: No cap on the total amount of data you can store.
 
-### 🎨 Modern & Beautiful UI
-- **Google Drive-Inspired Design**: Familiar, intuitive, and clean interface.
-- **Seamless Dark Mode**: Fully responsive dark/light theme that adapts to your system preferences.
-- **Interactive Elements**: Smooth animations using `framer-motion` for a premium feel.
-- **Grid & List Views**: Flexible viewing options with sortable columns in List view.
+### 🎨 Modern & Premium UI
+- **Google Drive-Inspired Design**: Familiar, intuitive, and clean interface with a focus on usability.
+- **Adaptive Dark/Light Mode**: Fully responsive theme that respects system settings and persists your preference.
+- **Micro-Interactions**: Smooth animations using `framer-motion` for a polished feel.
+- **View Options**: Toggle between **Grid** and **List** views with sortable columns.
 
-### 📂 Advanced File Management
-- **Smart Folder System**: Organize files into nested local folders (metadata stored locally).
-- **Drag & Drop Uploads**: Seamlessly upload files by dragging them into the window.
-- **Multi-File Queue**: Robust upload queue with real-time progress rings and byte-level accuracy.
-- **Rename & Organize**: full rename support for both files and folders.
-- **Star Important Items**: Mark frequently used files/folders with a Star for quick access.
+### 🔍 Powerful Search & Organization
+- **Real-Time Search**: Instantly find files and folders with a type-ahead dropdown search.
+- **Smart Folder System**: Create nested folders to organize your content (metadata stored locally).
+- **Starred Items**: Mark important files or folders with a star for quick access in the "Starred" tab.
+- **Recent Files**: Quickly access your most recently uploaded or modified files.
+
+### ⚡ Advanced File Management
+- **Drag & Drop Uploads**: Seamlessly upload files by dragging them into the app.
+- **Multi-File Queue**: Robust upload queue with real-time progress, concurrent processing, and status indicators.
+- **File Previews**: Click to preview supported files directly within the app.
+- **Rename & Edit**: Full support for renaming files and folders.
 
 ### 🗑️ Trash & Recovery
-- **Safe Deletion**: Deleted items move to a Trash bin first (Soft Delete).
-- **Restore Capability**: Accidentally deleted something? Restore it instantly.
-- **Auto-Cleanup**: Intelligent system to clean up old trash items (configurable).
-- **Empty Trash**: One-click option to permanently clear space.
+- **Soft Delete**: Deleted items move to a Trash bin first, preventing accidental data loss.
+- **Instant Restore**: Restore files or folders to their original location with one click.
+- **Empty Trash**: Permanently clear space when you're sure.
 
 ### 🔒 Privacy & Security
-- **Direct MTProto Connection**: Connects directly to Telegram servers from your local machine. No middleman servers.
-- **Local Metadata**: Folder structures and file names are stored in a local encrypted database (`metadata.json`).
+- **Direct MTProto Connection**: Connects directly to Telegram servers from your local machine. **No middleman servers.**
+- **Local Metadata**: Folder structures and file names are stored in a local encrypted database (`metadata.json`), ensuring your organization structure remains private.
 - **Encrypted Session**: Your Telegram session is stored securely locally.
 
 ## 🛠️ Tech Stack
@@ -64,7 +68,7 @@ Cloudra is a modern, privacy-focused desktop cloud storage client that leverages
     ```
 
 3.  **Configure Environment**
-    Create a `.env` file in `src-tauri` directory (or set environment variables) with your Telegram credentials:
+    Create a `.env` file in the `src-tauri` directory with your Telegram credentials:
     ```env
     TELEGRAM_API_ID=your_api_id
     TELEGRAM_API_HASH=your_api_hash
@@ -83,7 +87,7 @@ Cloudra is a modern, privacy-focused desktop cloud storage client that leverages
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request or open an Issue.
 
 ## 📄 License
 
