@@ -361,16 +361,16 @@ export default function Auth({ onLogin }: AuthProps) {
                             initial={{ rotate: -180, scale: 0 }}
                             animate={{ rotate: 0, scale: 1 }}
                             transition={{ type: "spring", duration: 0.8 }}
-                            className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center shadow-[0_0_20px_rgba(249,115,22,0.5)]"
+                            className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-[0_0_20px_rgba(37,99,235,0.5)]"
                         >
-                            <span className="font-bold text-xl">S</span>
+                            <span className="font-bold text-xl">P</span>
                         </motion.div>
-                        <span className="text-xl font-bold tracking-tight">Solaris</span>
+                        <span className="text-xl font-bold tracking-tight">Paperfold</span>
                     </div>
 
                     <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-2 leading-tight">
                         Sign in to <br />
-                        <span className="font-medium text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">Solaris</span>
+                        <span className="font-medium text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">Paperfold</span>
                     </h1>
                     <p className="text-gray-500 text-lg">using Telegram</p>
                 </motion.div>
@@ -392,7 +392,7 @@ export default function Auth({ onLogin }: AuthProps) {
                                             <button
                                                 type="button"
                                                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                                                className="h-14 bg-white/5 border border-white/10 rounded-xl px-4 flex items-center gap-2 hover:bg-white/10 hover:border-white/20 transition-all min-w-[100px] outline-none focus:ring-1 focus:ring-orange-500/50"
+                                                className="h-14 bg-white/5 border border-white/10 rounded-xl px-4 flex items-center gap-2 hover:bg-white/10 hover:border-white/20 transition-all min-w-[100px] outline-none focus:ring-1 focus:ring-blue-500/50"
                                             >
                                                 <span className="text-lg font-mono tracking-wide">{countryCode}</span>
                                                 <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />
@@ -462,7 +462,7 @@ export default function Auth({ onLogin }: AuthProps) {
                                     whileTap={{ scale: 0.98 }}
                                     type="submit"
                                     disabled={loading || !phone}
-                                    className="w-full h-14 bg-gradient-to-r from-orange-600 to-orange-500 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(249,115,22,0.3)] hover:shadow-[0_0_30px_rgba(249,115,22,0.5)]"
+                                    className="w-full h-14 bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)]"
                                 >
                                     {loading ? <Loader2 className="animate-spin w-5 h-5" /> : (
                                         <>
@@ -473,27 +473,25 @@ export default function Auth({ onLogin }: AuthProps) {
                             </form>
                         )}
 
-                        {/* .. (omitted other form steps for brevity, identical to before just different color) ... */}
-                        {/* Actually need to keep them as is for functionality */}
                         {step === 'code' && (
                             <form onSubmit={handleCodeSubmit} className="space-y-6">
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center">
                                         <label className="text-sm font-medium text-gray-400 uppercase tracking-wider text-xs">Enter Code</label>
-                                        <button type="button" onClick={() => setStep('phone')} className="text-xs text-orange-400 hover:text-orange-300 transition-colors">Change Phone</button>
+                                        <button type="button" onClick={() => setStep('phone')} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">Change Phone</button>
                                     </div>
                                     <input
                                         type="text"
                                         value={code}
                                         onChange={(e) => setCode(e.target.value)}
                                         placeholder="xxxxx"
-                                        className="w-full h-14 bg-white/5 border border-white/10 rounded-xl px-4 text-lg text-center font-mono tracking-[0.5em] focus:outline-none focus:border-orange-500/50 focus:bg-white/10 transition-all placeholder:text-gray-700"
+                                        className="w-full h-14 bg-white/5 border border-white/10 rounded-xl px-4 text-lg text-center font-mono tracking-[0.5em] focus:outline-none focus:border-blue-500/50 focus:bg-white/10 transition-all placeholder:text-gray-700"
                                         autoFocus
                                         maxLength={5}
                                     />
                                     <p className="text-xs text-center text-gray-500">We've sent a code to your Telegram app.</p>
                                 </div>
-                                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" disabled={loading || code.length < 5} className="w-full h-14 bg-gradient-to-r from-orange-600 to-orange-500 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">{loading ? <Loader2 className="animate-spin w-5 h-5" /> : "Verify Code"}</motion.button>
+                                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" disabled={loading || code.length < 5} className="w-full h-14 bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">{loading ? <Loader2 className="animate-spin w-5 h-5" /> : "Verify Code"}</motion.button>
                             </form>
                         )}
 
@@ -501,9 +499,9 @@ export default function Auth({ onLogin }: AuthProps) {
                             <form onSubmit={handlePasswordSubmit} className="space-y-6">
                                 <div className="space-y-4">
                                     <label className="text-sm font-medium text-gray-400 uppercase tracking-wider text-xs">Two-Step Verification</label>
-                                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your cloud password" className="w-full h-14 bg-white/5 border border-white/10 rounded-xl px-4 text-lg focus:outline-none focus:border-orange-500/50 focus:bg-white/10 transition-all placeholder:text-gray-600" autoFocus />
+                                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your cloud password" className="w-full h-14 bg-white/5 border border-white/10 rounded-xl px-4 text-lg focus:outline-none focus:border-blue-500/50 focus:bg-white/10 transition-all placeholder:text-gray-600" autoFocus />
                                 </div>
-                                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" disabled={loading} className="w-full h-14 bg-gradient-to-r from-orange-600 to-orange-500 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg">{loading ? <Loader2 className="animate-spin w-5 h-5" /> : "Unlock"}</motion.button>
+                                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" disabled={loading} className="w-full h-14 bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg">{loading ? <Loader2 className="animate-spin w-5 h-5" /> : "Unlock"}</motion.button>
                             </form>
                         )}
                     </motion.div>
@@ -532,99 +530,93 @@ export default function Auth({ onLogin }: AuthProps) {
 function SolarSystem() {
     return (
         <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-            {/* Dynamic Ambient Background */}
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(253,184,19,0.05)_0%,_transparent_60%)]" />
+            {/* Deep Space Atmosphere */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(14,165,233,0.05)_0%,_transparent_60%)]" />
 
-            {/* 3D Container (Tilt) */}
-            <div className="relative w-[1000px] h-[1000px] scale-90" style={{ transformStyle: 'preserve-3d', transform: 'rotateX(60deg) rotateZ(-10deg)' }}>
+            {/* 3D Container (Tilt) - Scaled Down for 'Simplicity/Realism' */}
+            <div className="relative w-[800px] h-[800px] scale-50" style={{ transformStyle: 'preserve-3d', transform: 'rotateX(60deg) rotateZ(-10deg)' }}>
 
-                {/* 1. THE SUN */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full shadow-[0_0_100px_rgba(253,186,116,0.6)] z-10"
+                {/* 1. THE BLUE STAR (Sun) */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full shadow-[0_0_120px_rgba(56,189,248,0.6)] z-10"
                     style={{
-                        background: 'radial-gradient(circle at center, #FFF7ED 0%, #FDBA74 40%, #EA580C 100%)',
-                        boxShadow: '0 0 60px #F97316, 0 0 100px rgba(253,186,116,0.2)'
+                        background: 'radial-gradient(circle at center, #E0F2FE 0%, #38BDF8 40%, #0369A1 100%)',
+                        boxShadow: '0 0 80px #0EA5E9, 0 0 150px rgba(14,165,233,0.3)'
                     }}
                 >
-                    {/* Sun Atmosphere Pulse */}
-                    <div className="absolute inset-0 rounded-full bg-orange-400 opacity-30 animate-ping" />
+                    {/* Star Atmosphere Pulse */}
+                    <div className="absolute inset-0 rounded-full bg-blue-300 opacity-20 animate-pulse" />
                 </div>
 
-                {/* 2. PLANETS (Simplified scale/distance for aesthetics) */}
+                {/* 2. PLANETS (Realistic muted colors + shading) */}
 
-                {/* Mercury */}
-                <PlanetOrbit size={450} duration={10} delay={0}>
-                    <div className="w-3 h-3 rounded-full bg-gray-400 shadow-[0_0_5px_gray]" />
+                {/* Mercury (Rock) */}
+                <PlanetOrbit size={280} duration={12} delay={0} opacity={0.3}>
+                    <div className="w-4 h-4 rounded-full bg-neutral-400 shadow-[inset_-2px_-2px_6px_rgba(0,0,0,0.8)]" />
                 </PlanetOrbit>
 
-                {/* Venus */}
-                <PlanetOrbit size={550} duration={15} delay={-5}>
-                    <div className="w-4 h-4 rounded-full bg-yellow-200 shadow-[0_0_10px_rgba(254,240,138,0.5)]" />
+                {/* Venus (Cloudy/Gold) */}
+                <PlanetOrbit size={380} duration={18} delay={-5} opacity={0.3}>
+                    <div className="w-5 h-5 rounded-full bg-[#E6C288] shadow-[inset_-2px_-2px_6px_rgba(0,0,0,0.7)]" />
                 </PlanetOrbit>
 
-                {/* Earth */}
-                <PlanetOrbit size={680} duration={20} delay={-12}>
-                    <div className="w-4 h-4 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]">
-                        {/* Moon */}
-                        <div className="absolute -top-3 left-1/2 w-1 h-1 bg-gray-300 rounded-full opacity-80" />
+                {/* Earth (Blue Marble) */}
+                <PlanetOrbit size={500} duration={25} delay={-12} opacity={0.3}>
+                    <div className="w-5 h-5 rounded-full bg-blue-500 shadow-[inset_-2px_-2px_6px_rgba(0,0,0,0.8)] overflow-hidden">
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,_rgba(255,255,255,0.4)_0%,_transparent_50%)]" />
                     </div>
                 </PlanetOrbit>
 
-                {/* Mars */}
-                <PlanetOrbit size={800} duration={25} delay={-8}>
-                    <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
+                {/* Mars (Red) */}
+                <PlanetOrbit size={620} duration={32} delay={-8} opacity={0.3}>
+                    <div className="w-4 h-4 rounded-full bg-red-800 shadow-[inset_-2px_-2px_4px_rgba(0,0,0,0.6)]" />
                 </PlanetOrbit>
 
-                {/* Jupiter */}
-                <PlanetOrbit size={1100} duration={40} delay={-20}>
-                    <div className="w-10 h-10 rounded-full bg-orange-200 shadow-[0_0_20px_rgba(253,186,116,0.4)] overflow-hidden flex items-center justify-center"
-                        style={{ background: 'linear-gradient(45deg, #FDE68A, #D97706, #78350F)' }}>
+                {/* Jupiter (Giant) */}
+                <PlanetOrbit size={880} duration={55} delay={-20} opacity={0.25}>
+                    <div className="w-16 h-16 rounded-full bg-[#CFAE94] shadow-[inset_-6px_-6px_15px_rgba(0,0,0,0.7)] overflow-hidden flex items-center justify-center">
                         {/* Bands */}
-                        <div className="w-full h-1 bg-black/10 absolute top-3" />
-                        <div className="w-full h-2 bg-black/10 absolute bottom-3" />
+                        <div className="w-full h-2 bg-[#A68A6D]/40 absolute top-4" />
+                        <div className="w-full h-3 bg-[#A68A6D]/40 absolute bottom-4" />
                     </div>
                 </PlanetOrbit>
 
-                {/* Saturn */}
-                <PlanetOrbit size={1400} duration={55} delay={-15}>
+                {/* Saturn (Rings) */}
+                <PlanetOrbit size={1150} duration={75} delay={-15} opacity={0.25}>
                     <div className="relative">
-                        <div className="w-8 h-8 rounded-full bg-[#EAD6A8] shadow-[0_0_15px_rgba(234,214,168,0.3)]" />
-                        {/* Rings */}
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full border-[6px] border-[#EAD6A8]/40 border-t-[#EAD6A8]/20 border-b-[#EAD6A8]/60 blur-[1px]" />
+                        <div className="w-12 h-12 rounded-full bg-[#D4C398] shadow-[inset_-4px_-4px_10px_rgba(0,0,0,0.6)]" />
+                        {/* Rings (More subtle) */}
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full border-[12px] border-[#D4C398]/20 border-t-[#D4C398]/10 border-b-[#D4C398]/30 blur-[0.5px]" />
                     </div>
                 </PlanetOrbit>
 
-                {/* Uranus */}
-                <PlanetOrbit size={1650} duration={70} delay={-30}>
-                    <div className="w-6 h-6 rounded-full bg-cyan-300 shadow-[0_0_15px_rgba(103,232,249,0.4)] opacity-80" />
+                {/* Uranus (Ice Giant) */}
+                <PlanetOrbit size={1350} duration={95} delay={-30} opacity={0.2}>
+                    <div className="w-8 h-8 rounded-full bg-cyan-300/80 shadow-[inset_-3px_-3px_8px_rgba(0,0,0,0.5)]" />
                 </PlanetOrbit>
 
-                {/* Neptune */}
-                <PlanetOrbit size={1850} duration={85} delay={-40}>
-                    <div className="w-6 h-6 rounded-full bg-blue-700 shadow-[0_0_15px_rgba(29,78,216,0.5)] opacity-80" />
+                {/* Neptune (Dark Blue) */}
+                <PlanetOrbit size={1550} duration={110} delay={-40} opacity={0.2}>
+                    <div className="w-8 h-8 rounded-full bg-blue-800 shadow-[inset_-3px_-3px_8px_rgba(0,0,0,0.7)]" />
                 </PlanetOrbit>
 
             </div>
 
             <style>{`
-                @keyframes orbitMove {
-                    from { transform: rotate(0deg) translateX(50%) rotate(0deg); }
-                    to { transform: rotate(360deg) translateX(50%) rotate(-360deg); } 
-                    /* Inner rotate cancels out parent rotation so planet stays upright if 2D, 
-                       but here we are in 3D transform so it rotates around Z. */
-                }
+                 /* No extra physics needed, standard orbits work best for 'realistic' model view */
             `}</style>
         </div>
     );
 }
 
 // Helper component for orbits
-function PlanetOrbit({ size, duration, delay, children }: { size: number, duration: number, delay: number, children: React.ReactNode }) {
+function PlanetOrbit({ size, duration, delay, opacity = 0.5, children }: { size: number, duration: number, delay: number, opacity?: number, children: React.ReactNode }) {
     return (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10"
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white"
             style={{
                 width: size,
                 height: size,
-                boxShadow: 'inset 0 0 20px rgba(255,255,255,0.02)'
+                borderColor: `rgba(255,255,255,${opacity})`,
+                boxShadow: 'none' // Removed glowing tracks for realism
             }}
         >
             <div className="absolute top-0 left-0 w-full h-full animate-[spin_linear_infinite]"
@@ -635,8 +627,8 @@ function PlanetOrbit({ size, duration, delay, children }: { size: number, durati
             >
                 {/* Planet Container - Positioned at edge */}
                 <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2">
-                    {/* Counter-rotate to keep planet lighting consistent (optional, currently just passing children) */}
-                    <div style={{ transform: 'rotateX(-60deg)' }}> {/* Correct tilt for 3D view */}
+                    {/* Counter-rotate for shading consistency (fake 3D lighting) */}
+                    <div style={{ transform: 'rotateX(-60deg)' }}>
                         {children}
                     </div>
                 </div>
