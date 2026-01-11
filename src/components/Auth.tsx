@@ -504,8 +504,8 @@ export default function Auth({ onLogin }: AuthProps) {
 
             {/* Right Panel - Galaxy View (Masked Arch) */}
             <div className="absolute right-0 top-0 bottom-0 w-[55%] pointer-events-none hidden md:block overflow-hidden">
-                {/* 1. The Arch Mask */}
-                <div className="absolute inset-x-0 bottom-0 top-12 border-t border-l border-white/10 rounded-tl-[300px] overflow-hidden backdrop-blur-[1px]">
+                {/* 1. The Arch Mask - Enhanced with border glow */}
+                <div className="absolute inset-x-0 bottom-0 top-12 border-t border-l border-white/10 rounded-tl-[300px] overflow-hidden backdrop-blur-[1px] shadow-[inset_10px_10px_50px_rgba(0,0,0,0.5)]">
                     <GalaxyView />
                 </div>
             </div>
@@ -518,63 +518,118 @@ function GalaxyView() {
     return (
         <div className="relative w-full h-full bg-[#030712] flex items-center justify-center overflow-hidden">
 
-            {/* 2. Rotating Galaxy (Blue Texture) */}
-            <div className="absolute inset-0">
+            {/* 2. Rotating Galaxy (Blue Texture) - MULTI-LAYERED */}
+            <div className="absolute inset-0 z-0">
+                {/* Slow Deep Core */}
                 <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 120, repeat: Infinity, ease: "linear" }}
                     className="absolute -inset-[50%]"
                     style={{
-                        background: 'conic-gradient(from 0deg, transparent 0%, #0c4a6e 10%, #082f49 20%, transparent 40%, #075985 60%, transparent 80%)',
-                        filter: 'blur(80px) brightness(1.2)'
+                        background: 'conic-gradient(from 0deg, transparent 0%, #0c4a6e 15%, #082f49 30%, transparent 50%, #075985 70%, transparent 90%)',
+                        filter: 'blur(100px) brightness(1.2)'
                     }}
                 />
+
+                {/* Faster Outer Spirals */}
                 <motion.div
                     animate={{ rotate: -360 }}
-                    transition={{ duration: 180, repeat: Infinity, ease: "linear" }}
-                    className="absolute -inset-[30%]"
+                    transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+                    className="absolute -inset-[60%]"
                     style={{
-                        background: 'conic-gradient(from 180deg, transparent 0%, #0ea5e9 15%, transparent 30%, #38bdf8 50%, transparent 80%)',
-                        filter: 'blur(60px) opacity(0.5)'
+                        background: 'conic-gradient(from 180deg, transparent 0%, rgba(14,165,233,0.3) 10%, transparent 25%, rgba(56,189,248,0.2) 45%, transparent 80%)',
+                        filter: 'blur(60px) opacity(0.6)'
                     }}
+                />
+
+                {/* Pulsing Core Center */}
+                <motion.div
+                    animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
+                    transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-blue-500/20 rounded-full blur-[80px]"
                 />
             </div>
 
-            {/* Stars */}
-            <div className="absolute inset-0">
-                {[...Array(50)].map((_, i) => (
-                    <div
+            {/* 3. Twinkling Stars */}
+            <div className="absolute inset-0 z-10">
+                {[...Array(60)].map((_, i) => (
+                    <motion.div
                         key={i}
-                        className="absolute bg-white rounded-full"
+                        className="absolute bg-white rounded-full shadow-[0_0_2px_white]"
                         style={{
                             top: `${Math.random() * 100}%`,
                             left: `${Math.random() * 100}%`,
-                            width: Math.random() < 0.8 ? 1 : 2,
-                            height: Math.random() < 0.8 ? 1 : 2,
-                            opacity: Math.random() * 0.7
+                            width: Math.random() < 0.7 ? 1 : 2,
+                            height: Math.random() < 0.7 ? 1 : 2,
+                        }}
+                        animate={{ opacity: [0.1, 0.8, 0.1], scale: [1, 1.2, 1] }}
+                        transition={{
+                            duration: 2 + Math.random() * 3,
+                            repeat: Infinity,
+                            delay: Math.random() * 5
                         }}
                     />
                 ))}
             </div>
 
-            {/* 3. Technical Overlays (Crosshairs) - Reference Style */}
-            <div className="absolute inset-0 border border-white/5 m-8 rounded-tl-[280px]">
-                {/* Center Crosshair */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 border border-white/20" />
-                <div className="absolute top-0 bottom-0 left-1/2 w-[1px] bg-white/10" />
-                <div className="absolute left-0 right-0 top-1/2 h-[1px] bg-white/10" />
+            {/* 4. Technical Overlays (Dynamic) */}
+            <div className="absolute inset-0 border border-white/5 m-8 rounded-tl-[280px] z-20">
 
-                {/* Arch Line */}
-                <div className="absolute top-0 left-0 w-full h-full border-l border-t border-dashed border-white/20 rounded-tl-[280px] scale-90" />
+                {/* Center Crosshair - Drifting */}
+                <motion.div
+                    animate={{ y: [-5, 5, -5], x: [-3, 3, -3] }}
+                    transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 border border-white/10"
+                >
+                    <div className="absolute top-0 bottom-0 left-1/2 w-[1px] bg-white/20" />
+                    <div className="absolute left-0 right-0 top-1/2 h-[1px] bg-white/20" />
+                </motion.div>
+
+                {/* Scanning Radar Line */}
+                <motion.div
+                    animate={{ top: ['0%', '100%'], opacity: [0, 1, 0] }}
+                    transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                    className="absolute left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"
+                />
+                <motion.div
+                    animate={{ left: ['0%', '100%'], opacity: [0, 1, 0] }}
+                    transition={{ duration: 6, repeat: Infinity, ease: "linear", delay: 2 }}
+                    className="absolute top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-cyan-500/50 to-transparent"
+                />
+
+                {/* Rotating Dashed Rings */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70%] h-[70%] rounded-full border border-dashed border-white/5 animate-[spin_100s_linear_infinite]" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] rounded-full border border-dashed border-white/5 animate-[spin_60s_linear_infinite_reverse]" />
 
                 {/* Data Points */}
                 <div className="absolute top-1/3 left-[60%] text-[10px] font-mono text-cyan-500/60 leading-tight">
-                    <p>sector: orion-09</p>
-                    <p>status: active</p>
-                    <p>coords: 45.2891, 12.002</p>
+                    <TypewriterText text="sector: orion-09" delay={0} />
+                    <TypewriterText text="status: active" delay={1} />
+                    <div className="flex gap-2">
+                        <span>coords:</span>
+                        <motion.span
+                            animate={{ opacity: [0.5, 1, 0.5] }}
+                            transition={{ duration: 0.5, repeat: Infinity }}
+                        >
+                            45.2891, 12.002
+                        </motion.span>
+                    </div>
                 </div>
             </div>
 
         </div>
+    );
+}
+
+// Small helper for typewriter effect on static text
+function TypewriterText({ text, delay }: { text: string, delay: number }) {
+    return (
+        <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay, duration: 0.5 }}
+        >
+            {text}
+        </motion.p>
     );
 }
