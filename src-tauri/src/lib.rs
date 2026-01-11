@@ -443,7 +443,7 @@ async fn preview_file(state: State<'_, AppState>, file_id: i32, file_name: Strin
     let messages = client.get_messages_by_id(&chat, &[file_id]).await.map_err(|e| e.to_string())?;
     
     // Handle Vec<Option<Message>>
-    let message_opt = messages.first().ok_or("Message not found")?;
+
     // Handle Vec<Option<Message>>
     let message_opt = messages.first().ok_or("Message not found")?;
     let message = message_opt.as_ref().ok_or("Message is empty/deleted")?;

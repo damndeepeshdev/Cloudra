@@ -583,20 +583,26 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                 {/* Create Folder Modal */}
                 <AnimatePresence>
                     {isCreateFolderOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md">
                             <motion.div
                                 initial={{ opacity: 0, scale: 0.95 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-card text-card-foreground rounded-2xl shadow-xl p-6 w-96 border border-border"
+                                className="bg-[#0A0A0A] rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.5)] p-6 w-96 border border-white/10"
                             >
-                                <h3 className="text-lg font-semibold mb-4 text-foreground">New Folder</h3>
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-400">
+                                        <FolderIcon className="w-5 h-5 fill-current opacity-80" />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-white">New Folder</h3>
+                                </div>
+
                                 <form onSubmit={handleCreateFolderSubmit}>
                                     <input
                                         autoFocus
                                         type="text"
                                         placeholder="Folder Name"
-                                        className="w-full px-4 py-3 rounded-xl border border-input bg-background text-foreground focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all mb-6"
+                                        className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all font-medium mb-6 placeholder:text-gray-600"
                                         value={newFolderName}
                                         onChange={(e) => setNewFolderName(e.target.value)}
                                     />
@@ -604,13 +610,13 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                         <button
                                             type="button"
                                             onClick={() => setIsCreateFolderOpen(false)}
-                                            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                                            className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors flex-1 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5"
                                         >
                                             Cancel
                                         </button>
                                         <button
                                             type="submit"
-                                            className="px-6 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-all shadow-lg shadow-primary/20"
+                                            className="px-6 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-cyan-500/20 flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                                             disabled={!newFolderName.trim()}
                                         >
                                             Create
@@ -623,44 +629,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                 </AnimatePresence>
 
                 {/* Delete Confirmation Modal */}
-                <AnimatePresence>
-                    {itemToDelete && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-background rounded-2xl shadow-xl p-6 w-96 border border-border"
-                            >
-                                <div className="flex flex-col items-center text-center mb-6">
-                                    <div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mb-4 text-destructive">
-                                        <Trash2 className="w-6 h-6" />
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-foreground">Delete Item?</h3>
-                                    <p className="text-sm text-muted-foreground mt-2">
-                                        Are you sure you want to {itemToDelete.deleteType === 'hard' ? 'permanently delete' : 'move to trash'} <span className="font-medium text-foreground">"{itemToDelete.name}"</span>?
-                                        {itemToDelete.isFolder && " This will delete all files inside it."}
-                                        {itemToDelete.deleteType === 'hard' && <><br /><span className="text-destructive font-bold">This action cannot be undone.</span></>}
-                                    </p>
-                                </div>
-                                <div className="flex justify-end gap-3">
-                                    <button
-                                        onClick={() => setItemToDelete(null)}
-                                        className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex-1 bg-secondary rounded-lg hover:bg-secondary/80"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={confirmDelete}
-                                        className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-red-600/20 flex-1"
-                                    >
-                                        {itemToDelete.deleteType === 'hard' ? 'Delete Forever' : 'Move to Trash'}
-                                    </button>
-                                </div>
-                            </motion.div>
-                        </div>
-                    )}
-                </AnimatePresence>
+
 
                 {/* Navigation */}
                 <nav className="flex-1 space-y-1 px-4">
