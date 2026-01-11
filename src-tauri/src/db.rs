@@ -357,6 +357,23 @@ impl Database {
         (folders, files)
     }
 
+    pub fn search_items(&self, query: &str) -> (Vec<Folder>, Vec<FileMetadata>) {
+        let store = self.store.lock().unwrap();
+        let query_lower = query.to_lowercase();
+        
+        let folders = store.folders.iter()
+            .filter(|f| !f.trashed && f.name.to_lowercase().contains(&query_lower))
+            .cloned()
+            .collect();
+            
+        let files = store.files.iter()
+            .filter(|f| !f.trashed && f.name.to_lowercase().contains(&query_lower))
+            .cloned()
+            .collect();
+            
+        (folders, files)
+    }
+
 
     pub fn get_total_usage(&self) -> i64 {
         let store = self.store.lock().unwrap();

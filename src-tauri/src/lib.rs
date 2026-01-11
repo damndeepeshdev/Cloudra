@@ -645,6 +645,11 @@ async fn fetch_starred(state: State<'_, AppState>) -> Result<(Vec<Folder>, Vec<F
 }
 
 #[tauri::command]
+async fn search_items(query: String, state: State<'_, AppState>) -> Result<(Vec<db::Folder>, Vec<db::FileMetadata>), String> {
+    Ok(state.db.search_items(&query))
+}
+
+#[tauri::command]
 async fn get_storage_usage(state: State<'_, AppState>) -> Result<String, String> {
     let bytes = state.db.get_total_usage();
     
@@ -703,7 +708,8 @@ pub fn run() {
             preview_file,
             get_current_user,
             toggle_star,
-            fetch_starred
+            fetch_starred,
+            search_items
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

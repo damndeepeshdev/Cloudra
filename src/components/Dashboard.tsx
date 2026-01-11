@@ -67,6 +67,11 @@ export default function Dashboard() {
     const [isUploadProgressMinimized, setIsUploadProgressMinimized] = useState(false);
     const [user, setUser] = useState<UserProfile | null>(null);
 
+    // Search State
+    const [searchQuery, setSearchQuery] = useState("");
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [searchResults, setSearchResults] = useState<{ folders: Folder[], files: FileMetadata[] }>({ folders: [], files: [] });
+
     useEffect(() => {
         invoke<UserProfile>('get_current_user').then(setUser).catch(console.error);
 
@@ -80,6 +85,33 @@ export default function Dashboard() {
             setIsDarkMode(false);
         }
     }, []);
+
+    // Update Page Title
+    useEffect(() => {
+        document.title = `${folderName} - Telegram Cloud`;
+    }, [folderName]);
+
+    // Search Effect
+    useEffect(() => {
+        if (!searchQuery.trim()) {
+            setSearchResults({ folders: [], files: [] });
+            setIsSearchOpen(false);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            try {
+                console.log("Searching for:", searchQuery);
+                const [folders, files] = await invoke<[Folder[], FileMetadata[]]>('search_items', { query: searchQuery });
+                setSearchResults({ folders, files });
+                setIsSearchOpen(true);
+            } catch (e) {
+                console.error("Search failed:", e);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     const fetchStorageUsage = async () => {
         try {
@@ -714,15 +746,108 @@ export default function Dashboard() {
                 <header className="h-20 px-8 flex items-center justify-between border-b border-gray-100/50 dark:border-gray-800 transition-colors duration-200">
 
                     {/* Search */}
-                    <div className="flex-1 max-w-2xl mx-auto px-4">
+                    <div className="flex-1 max-w-2xl mx-auto px-4 relative z-50">
                         <div className="relative group">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                             <input
                                 type="text"
-                                placeholder={`Search in ${folderName}`}
-                                className="w-full h-12 pl-12 pr-4 bg-muted/50 hover:bg-muted focus:bg-background border border-transparent focus:border-ring rounded-full text-sm transition-all outline-none focus:ring-4 focus:ring-ring/10 placeholder:text-muted-foreground font-medium text-foreground"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onFocus={() => { if (searchQuery.trim().length > 0) setIsSearchOpen(true); }}
+                                placeholder="Search everywhere..."
+                                className="w-full h-12 pl-12 pr-10 bg-muted/50 hover:bg-muted focus:bg-background border border-transparent focus:border-ring rounded-full text-sm transition-all outline-none focus:ring-4 focus:ring-ring/10 placeholder:text-muted-foreground font-medium text-foreground"
                             />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => {
+                                        setSearchQuery('');
+                                        setIsSearchOpen(false);
+                                    }}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-secondary rounded-full text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
+
+                        {/* Search Results Dropdown */}
+                        <AnimatePresence>
+                            {isSearchOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setIsSearchOpen(false)} />
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                                        className="absolute top-full left-4 right-4 mt-2 bg-popover/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl overflow-hidden z-20 max-h-[60vh] flex flex-col"
+                                    >
+                                        <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
+                                            {searchResults.folders.length === 0 && searchResults.files.length === 0 ? (
+                                                <div className="p-8 text-center text-muted-foreground">
+                                                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                                    <p>No results found for "{searchQuery}"</p>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {/* Folders Section */}
+                                                    {searchResults.folders.length > 0 && (
+                                                        <div className="mb-4">
+                                                            <h3 className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Folders</h3>
+                                                            {searchResults.folders.map(folder => (
+                                                                <button
+                                                                    key={folder.id}
+                                                                    onClick={() => {
+                                                                        setCurrentFolder(folder.id);
+                                                                        setFolderName(folder.name);
+                                                                        setBreadcrumbs(prev => [...prev, { id: folder.id, name: folder.name }]); // This is simplistic, ideally we fetch path
+                                                                        setIsSearchOpen(false);
+                                                                        setSearchQuery('');
+                                                                    }}
+                                                                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left group"
+                                                                >
+                                                                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+                                                                        <FolderIcon className="w-5 h-5 fill-current" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="font-medium text-foreground">{folder.name}</p>
+                                                                        <p className="text-xs text-muted-foreground">Folder</p>
+                                                                    </div>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Files Section */}
+                                                    {searchResults.files.length > 0 && (
+                                                        <div>
+                                                            <h3 className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Files</h3>
+                                                            {searchResults.files.map(file => (
+                                                                <button
+                                                                    key={file.id}
+                                                                    onClick={() => {
+                                                                        handlePreview({ ...file, type: 'file', size: formatSize(file.size) });
+                                                                        setIsSearchOpen(false);
+                                                                    }}
+                                                                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left group"
+                                                                >
+                                                                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-foreground group-hover:scale-110 transition-transform">
+                                                                        <FileIcon className="w-5 h-5" />
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="font-medium text-foreground truncate">{file.name}</p>
+                                                                        <p className="text-xs text-muted-foreground">{formatSize(file.size)} • {formatDate(new Date(file.created_at * 1000).toISOString())}</p>
+                                                                    </div>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
                     </div>
 
                     {/* Actions */}
@@ -1086,8 +1211,8 @@ export default function Dashboard() {
                                     try {
                                         await invoke('rename_item', {
                                             id: renameItem.id,
-                                            newName: name,
-                                            isFolder: renameItem.type === 'folder'
+                                            new_name: name,
+                                            is_folder: renameItem.type === 'folder'
                                         });
                                         setRefresh(r => r + 1);
                                         setIsRenameOpen(false);
