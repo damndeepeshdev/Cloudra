@@ -568,47 +568,82 @@ export default function Auth({ onLogin }: AuthProps) {
 function Globe() {
     return (
         <div className="w-full h-full animate-[spin_60s_linear_infinite] relative preserve-3d">
-            {/* Longitude Lines */}
-            {[...Array(8)].map((_, i) => (
+            {/* Longitude Lines - Vertical */}
+            {[...Array(12)].map((_, i) => (
                 <div
                     key={`long-${i}`}
-                    className="absolute inset-0 border border-blue-500/10 rounded-full"
+                    className="absolute inset-0 border border-blue-400/20 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.1)]"
                     style={{
-                        transform: `rotateY(${i * 22.5}deg)`
-                    }}
-                />
-            ))}
-            {/* Latitude Lines */}
-            {[...Array(7)].map((_, i) => (
-                <div
-                    key={`lat-${i}`}
-                    className="absolute border border-blue-500/10 rounded-full transition-all"
-                    style={{
-                        top: '50%',
-                        left: '50%',
-                        width: `${100 - i * 12}%`,
-                        height: `${100 - i * 12}%`,
-                        transform: `translate(-50%, -50%) rotateX(75deg)`,
-                        boxShadow: i === 2 ? '0 0 40px rgba(59,130,246,0.1)' : 'none'
+                        transform: `rotateY(${i * 15}deg)`
                     }}
                 />
             ))}
 
-            {/* Floating Particles/Satellites */}
-            <motion.div
-                className="absolute top-1/2 left-1/2 w-3 h-3 bg-blue-400 rounded-full shadow-[0_0_20px_rgba(96,165,250,1)]"
-                animate={{
-                    x: [0, 100, 0, -100, 0],
-                    y: [0, -50, 0, 50, 0],
-                    scale: [1, 1.2, 1],
-                    opacity: [0.8, 1, 0.8]
-                }}
-                transition={{
-                    duration: 10,
-                    repeat: Infinity,
-                    ease: "linear"
-                }}
-            />
+            {/* Latitude Lines - Horizontal (Brighter as requested) */}
+            {[...Array(8)].map((_, i) => (
+                <div
+                    key={`lat-${i}`}
+                    className="absolute border border-cyan-400/40 rounded-full transition-all shadow-[0_0_15px_rgba(34,211,238,0.2)]"
+                    style={{
+                        top: '50%',
+                        left: '50%',
+                        width: `${100 - i * 12}%`,
+                        height: `${100 - i * 12}%`, // Make them elliptical
+                        transform: `translate(-50%, -50%) rotateX(75deg)`,
+                    }}
+                />
+            ))}
+
+            {/* Core Glow */}
+            <div className="absolute top-1/2 left-1/2 w-40 h-40 bg-blue-600/20 rounded-full blur-[60px] -translate-x-1/2 -translate-y-1/2" />
+
+            {/* Orbiting Planets / Satellites */}
+            {[
+                { color: 'bg-blue-400', shadow: 'shadow-blue-400', size: 'w-4 h-4', duration: 8, delay: 0, radius: 120 },
+                { color: 'bg-cyan-300', shadow: 'shadow-cyan-300', size: 'w-3 h-3', duration: 12, delay: 2, radius: 180 },
+                { color: 'bg-purple-400', shadow: 'shadow-purple-400', size: 'w-5 h-5', duration: 15, delay: 5, radius: 240 },
+                { color: 'bg-white', shadow: 'shadow-white', size: 'w-2 h-2', duration: 6, delay: 1, radius: 90 },
+                { color: 'bg-indigo-400', shadow: 'shadow-indigo-400', size: 'w-3 h-3', duration: 20, delay: 8, radius: 300 },
+            ].map((planet, i) => (
+                <motion.div
+                    key={`planet-${i}`}
+                    className={`absolute top-1/2 left-1/2 ${planet.size} ${planet.color} rounded-full shadow-[0_0_20px_currentColor] ${planet.shadow}`}
+                    animate={{
+                        x: [planet.radius, 0, -planet.radius, 0, planet.radius],
+                        z: [0, planet.radius, 0, -planet.radius, 0], // Move in 3D depth
+                        y: [0, -planet.radius * 0.3, 0, planet.radius * 0.3, 0], // Slight tilt
+                        scale: [1, 1.5, 1, 0.8, 1],
+                        opacity: [0.8, 1, 0.8, 0.6, 0.8]
+                    }}
+                    transition={{
+                        duration: planet.duration,
+                        repeat: Infinity,
+                        ease: "linear",
+                        delay: planet.delay
+                    }}
+                    style={{
+                        color: planet.color.replace('bg-', '') // Helper for shadow currentColor usage
+                    }}
+                />
+            ))}
+
+            {/* Random Data Particles */}
+            {[...Array(15)].map((_, i) => (
+                <motion.div
+                    key={`particle-${i}`}
+                    className="absolute w-1 h-1 bg-white/60 rounded-full"
+                    animate={{
+                        x: Math.random() * 400 - 200,
+                        y: Math.random() * 400 - 200,
+                        opacity: [0, 1, 0]
+                    }}
+                    transition={{
+                        duration: 3 + Math.random() * 2,
+                        repeat: Infinity,
+                        delay: Math.random() * 5
+                    }}
+                />
+            ))}
         </div>
     );
 }
