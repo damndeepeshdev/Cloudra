@@ -573,87 +573,106 @@ export default function Auth({ onLogin }: AuthProps) {
 }
 
 function InterstellarWormhole() {
+    // Generate particles mathematically for the accretion disk
+    // We use polar coordinates (r, theta) to distribute particles in a ring
+    const debris = useMemo(() => {
+        return Array.from({ length: 400 }).map((_, i) => {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 180 + Math.random() * 120; // 180px to 300px radius
+            const size = Math.random() * 2;
+            const speed = 20 + Math.random() * 20; // Seconds per rotation
+            const delay = Math.random() * -20;
+            const opacity = 0.3 + Math.random() * 0.7;
+            return { angle, radius, size, speed, delay, opacity, id: i };
+        });
+    }, []);
+
     return (
         <div className="relative w-full h-full flex items-center justify-center">
-            {/* 1. Star Warp Tunnel (Background) */}
+            {/* 1. Deep Space Background - Dynamic Stars */}
             <div className="absolute inset-0 overflow-hidden">
-                {[...Array(50)].map((_, i) => (
-                    <motion.div
-                        key={`star-warp-${i}`}
-                        className="absolute top-1/2 left-1/2 w-0.5 h-[400px] bg-gradient-to-t from-transparent via-cyan-100 to-transparent opacity-0 mix-blend-screen"
-                        style={{
-                            transformOrigin: 'center bottom',
-                            transform: `translate(-50%, -50%) rotate(${i * 7.2}deg) translateY(-200px)`
-                        }}
-                        animate={{
-                            height: ['100px', '500px', '800px'],
-                            opacity: [0, 0.6, 0],
-                            y: [0, -500]
-                        }}
-                        transition={{
-                            duration: 1.5 + Math.random(),
-                            repeat: Infinity,
-                            ease: "easeIn",
-                            delay: Math.random() * 2
-                        }}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_#000_100%)] z-0" />
+                {[...Array(60)].map((_, i) => {
+                    const size = Math.random() > 0.9 ? 2 : 1;
+                    return (
+                        <motion.div
+                            key={`star-${i}`}
+                            className="absolute bg-blue-100 rounded-full"
+                            style={{
+                                width: size,
+                                height: size,
+                                top: `${Math.random() * 100}%`,
+                                left: `${Math.random() * 100}%`,
+                                opacity: Math.random() * 0.8
+                            }}
+                            animate={{ opacity: [0.2, 0.8, 0.2] }}
+                            transition={{ duration: 2 + Math.random() * 3, repeat: Infinity, delay: Math.random() * 5 }}
+                        />
+                    );
+                })}
+            </div>
+
+            {/* Container for the Black Hole */}
+            <div className="relative w-[800px] h-[800px] flex items-center justify-center scale-100">
+
+                {/* 2. Gravitational Lensing Halo (Rear Disk warped over top) */}
+                {/* This mimics the light form behind the hole being bent over it */}
+                <div className="absolute w-[600px] h-[600px] rounded-full animate-[spin_60s_linear_infinite_reverse] opacity-50 blur-[30px] mix-blend-screen">
+                    <div className="absolute inset-0 rounded-full bg-[conic-gradient(from_0deg,transparent_0%,rgba(6,182,212,0.1)_10%,rgba(34,211,238,0.4)_30%,rgba(59,130,246,0.2)_50%,transparent_60%)]"
+                        style={{ transform: 'rotate(-45deg) scaleY(1.3)' }} />
+                </div>
+
+                {/* 3. The Main Accretion Disk - Mathematical Particles */}
+                {/* We rotate the entire container to get the correct viewing angle */}
+                <div className="absolute w-[800px] h-[800px] z-20" style={{ transform: 'rotateX(70deg) rotateZ(-10deg)', transformStyle: 'preserve-3d' }}>
+
+                    {/* Continuous Gaseous Disk (Base Layer) */}
+                    <div className="absolute inset-[150px] rounded-full border-[60px] border-cyan-500/10 blur-[20px] animate-[spin_30s_linear_infinite]"
+                        style={{ boxShadow: '0 0 100px rgba(6,182,212,0.2)' }}
                     />
-                ))}
+
+                    {/* Individual Debris Particles */}
+                    {debris.map((p) => (
+                        <div
+                            key={p.id}
+                            className="absolute rounded-full bg-cyan-300 shadow-[0_0_5px_cyan]"
+                            style={{
+                                width: p.size,
+                                height: p.size,
+                                left: '50%',
+                                top: '50%',
+                                opacity: p.opacity,
+                                transform: `rotate(${p.angle}rad) translateX(${p.radius}px)`, // Polar placement
+                                animation: `orbit ${p.speed}s linear infinite`,
+                                animationDelay: `${p.delay}s`
+                            }}
+                        />
+                    ))}
+
+                    {/* Inner Hot Ring (Doppler Effect - Brighter on left) */}
+                    <div className="absolute inset-[180px] rounded-full border-[10px] border-transparent border-l-white/60 border-t-cyan-300/40 border-b-cyan-300/40 border-r-transparent blur-[4px] animate-[spin_15s_linear_infinite]" />
+                </div>
+
+                {/* 4. The Event Horizon (Shadow) */}
+                <div className="relative w-[280px] h-[280px] bg-black rounded-full z-30 shadow-[0_0_80px_rgba(6,182,212,0.3)] flex items-center justify-center">
+                    {/* Photon Ring (Sharp bright circle) */}
+                    <div className="absolute inset-[1px] rounded-full border-[1.5px] border-cyan-100/70 blur-[0.5px] shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
+
+                    {/* Singularity Void */}
+                    <div className="absolute inset-[4px] bg-black rounded-full" />
+                </div>
+
+                {/* 5. Front Lensing (Disk wrapping UNDER) */}
+                <div className="absolute w-[650px] h-[300px] z-40 opacity-40 mix-blend-screen pointer-events-none"
+                    style={{ top: '60%', filter: 'blur(20px)' }}>
+                    <div className="w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(6,182,212,0.5)_0%,transparent_70%)]" />
+                </div>
             </div>
-
-            {/* 2. Complex Accretion Disk System */}
-            <div className="absolute w-[700px] h-[700px] animate-[spin_40s_linear_infinite]" style={{ transformStyle: 'preserve-3d' }}>
-                {/* Outer Dust Ring */}
-                <div className="absolute inset-0 rounded-full border-[60px] border-indigo-900/20 blur-[30px]"
-                    style={{ transform: 'rotateX(70deg)' }} />
-
-                {/* Main Cyan Ring */}
-                <div className="absolute inset-[40px] rounded-full border-[30px] border-cyan-500/20 blur-[15px]"
-                    style={{ transform: 'rotateX(70deg)' }} />
-
-                {/* Bright Inner Filament */}
-                <div className="absolute inset-[60px] rounded-full border-[2px] border-white/60 blur-[1px] shadow-[0_0_30px_rgba(34,211,238,0.6)]"
-                    style={{ transform: 'rotateX(70deg)' }} />
-
-                {/* Rotating Debris Fields */}
-                {[...Array(3)].map((_, i) => (
-                    <div key={`ring-${i}`}
-                        className="absolute inset-[50px] rounded-full border-[10px] border-transparent border-t-cyan-400/30 blur-[4px]"
-                        style={{
-                            transform: `rotateX(70deg) rotate(${i * 120}deg)`,
-                            animation: `spinReverse ${20 + i * 5}s linear infinite`
-                        }}
-                    />
-                ))}
-            </div>
-
-            {/* 3. The Photon Sphere (Vertical lensing effect) */}
-            <div className="absolute w-[650px] h-[650px] pointer-events-none mix-blend-screen opacity-60">
-                <div className="absolute inset-0 border-t-[6px] border-b-[2px] border-transparent border-t-cyan-200/50 border-b-cyan-600/20 rounded-full blur-[8px] scale-y-[0.8]" />
-            </div>
-
-            {/* 4. The Singularity Vortex (Replacing the 'Black Spot') */}
-            <div className="relative w-56 h-56 rounded-full overflow-hidden flex items-center justify-center z-10">
-                {/* The Void Itself */}
-                <div className="absolute inset-0 bg-black rounded-full shadow-[0_0_100px_rgba(0,0,0,1)] scale-90" />
-
-                {/* Spinning Vortex Gradient inside the black hole */}
-                <div className="absolute inset-0 bg-[conic-gradient(from_0deg,transparent_0%,rgba(6,182,212,0.1)_50%,transparent_100%)] animate-[spin_3s_linear_infinite]" />
-
-                {/* Inner Event Horizon Glow */}
-                <div className="absolute inset-0 rounded-full border-2 border-cyan-500/30 blur-[4px] shadow-[inset_0_0_20px_rgba(6,182,212,0.4)]" />
-
-                {/* The "Eye" */}
-                <div className="absolute w-2 h-2 bg-white rounded-full blur-[2px] opacity-50 animate-pulse" />
-            </div>
-
-            {/* 5. Anamorphic Lens Flare (Cinematic Horizontal Streak) */}
-            <div className="absolute w-[180%] h-[2px] bg-gradient-to-r from-transparent via-blue-400/30 to-transparent blur-[2px] mix-blend-screen" />
-            <div className="absolute w-[120%] h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent blur-[0px] mix-blend-overlay" />
 
             <style>{`
-                @keyframes spinReverse {
-                    from { transform: rotateX(70deg) rotate(360deg); }
-                    to { transform: rotateX(70deg) rotate(0deg); }
+                @keyframes orbit {
+                    from { transform: rotate(0deg) translateX(var(--radius)); }
+                    to { transform: rotate(360deg) translateX(var(--radius)); }
                 }
             `}</style>
         </div>
