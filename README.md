@@ -85,6 +85,22 @@ Paperfold is a modern, privacy-focused desktop cloud storage client that leverag
     npm run tauri build
     ```
 
+### 🌍 Cross-Platform Release Builds
+We use **GitHub Actions** to automate builds for Windows, macOS, and Linux.
+
+1.  **Trigger a Release**:
+    Simply push a tag starting with `v` (e.g., `v1.0.0`).
+    ```bash
+    git tag v1.0.0
+    git push origin v1.0.0
+    ```
+
+2.  **Download Assets**:
+    Go to the **Actions** tab or **Releases** section in your GitHub repository to download the compiled binaries:
+    - **Windows**: `.exe` / `.msi`
+    - **macOS**: `.dmg` / `.app`
+    - **Linux**: `.deb` / `.AppImage`
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request or open an Issue.
