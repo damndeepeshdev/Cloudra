@@ -32,6 +32,9 @@ struct AppState {
 async fn login_start(phone: String, state: State<'_, AppState>) -> Result<String, String> {
     let mut client_guard = state.client.lock().await;
 
+    // Force fresh client for new login to prevent stale state (SRP_ID_INVALID)
+    *client_guard = None;
+
     // Load env vars
     dotenv::dotenv().ok();
     let api_id_str = std::env::var("TELEGRAM_API_ID").unwrap_or_else(|_| "0".to_string());
@@ -48,7 +51,7 @@ async fn login_start(phone: String, state: State<'_, AppState>) -> Result<String
             let session = Session::load_file_or_create(SESSION_FILE).map_err(|e| e.to_string())?;
             
             let params = InitParams {
-                device_model: "Telegram Cloud Desktop".to_string(),
+                device_model: "Paperfold Desktop".to_string(),
                 app_version: "0.1.0".to_string(),
                 system_version: "macOS".to_string(),
                 ..Default::default()
@@ -125,7 +128,12 @@ async fn login_complete(code: String, password: Option<String>, state: State<'_,
                 },
                 Err(e) => {
                     // Failure! Token remains in state for retry
-                    Err(format!("Password error: {}", e))
+                    let err_msg = e.to_string();
+                    if err_msg.contains("SRP_ID_INVALID") {
+                         Err("Session Timeout. Please go back and try again.".to_string())
+                    } else {
+                         Err(format!("Password error: {}", e))
+                    }
                 }
              }
         } else {
@@ -181,7 +189,7 @@ async fn check_auth(state: State<'_, AppState>) -> Result<bool, String> {
     let session = Session::load_file_or_create(SESSION_FILE).map_err(|e| e.to_string())?;
     // Config... (We need repeat config, maybe refactor later but copy-paste for safety now)
     let params = InitParams {
-        device_model: "Telegram Cloud Desktop".to_string(),
+        device_model: "Paperfold Desktop".to_string(),
         app_version: "0.1.0".to_string(),
         system_version: "macOS".to_string(),
         ..Default::default()
@@ -203,6 +211,18 @@ async fn check_auth(state: State<'_, AppState>) -> Result<bool, String> {
     *client_guard = Some(client);
     Ok(authorized)
 }
+
+#[tauri::command]
+async fn logout(state: State<'_, AppState>) -> Result<(), String> {
+    let mut client_guard = state.client.lock().await;
+    *client_guard = None;
+
+    if std::path::Path::new(SESSION_FILE).exists() {
+        let _ = std::fs::remove_file(SESSION_FILE);
+    }
+    Ok(())
+}
+
 
 #[tauri::command]
 async fn fetch_files(folder_id: Option<String>, state: State<'_, AppState>) -> Result<(Vec<db::Folder>, Vec<db::FileMetadata>), String> {
@@ -692,7 +712,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             login_start, 
             login_complete,
-            check_auth, 
+            check_auth,
+            logout, 
             fetch_files, 
             create_folder,
             upload_file,

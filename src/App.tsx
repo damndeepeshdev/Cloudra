@@ -31,11 +31,9 @@ function App() {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
       {isAuthenticated ? (
-        <Dashboard />
+        <Dashboard onLogout={() => setIsAuthenticated(false)} />
       ) : (
-        <div className="min-h-screen flex items-center justify-center p-4">
-          <Auth onLogin={() => setIsAuthenticated(true)} />
-        </div>
+        <Auth onLogin={() => setIsAuthenticated(true)} />
       )}
     </div>
   );

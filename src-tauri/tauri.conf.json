@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "telegram-cloud",
+  "productName": "Paperfold",
   "version": "0.1.0",
-  "identifier": "com.damndeepesh.telegram-cloud",
+  "identifier": "com.damndeepesh.paperfold",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "telegram-cloud",
+        "title": "Paperfold",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "resizable": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

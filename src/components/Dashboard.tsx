@@ -44,7 +44,7 @@ interface UserProfile {
     phone?: string;
 }
 
-export default function Dashboard() {
+export default function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [view, setView] = useState<'grid' | 'list'>('grid');
     const [currentFolder, setCurrentFolder] = useState<string | null>(null);
     const [folderName, setFolderName] = useState<string>("My Drive");
@@ -88,7 +88,7 @@ export default function Dashboard() {
 
     // Update Page Title
     useEffect(() => {
-        document.title = `${folderName} - Telegram Cloud`;
+        document.title = `${folderName} - Paperfold`;
     }, [folderName]);
 
     // Search Effect
@@ -484,9 +484,14 @@ export default function Dashboard() {
         }
     };
 
-    const handleLogout = () => {
-        // Reload for now as per basic auth flow
-        window.location.reload();
+    const handleLogout = async () => {
+        try {
+            await invoke('logout');
+            onLogout();
+        } catch (e) {
+            console.error("Logout failed", e);
+            onLogout();
+        }
     };
 
     const allItems: FileItem[] = [
@@ -544,12 +549,12 @@ export default function Dashboard() {
             </AnimatePresence>
 
             {/* Sidebar */}
-            <aside className="w-72 bg-card flex flex-col pt-8 pb-6 border-r border-border z-20 transition-colors">
+            <aside className="w-72 bg-card flex flex-col pt-8 pb-6 border-r border-border z-20 transition-colors" data-tauri-drag-region>
                 {/* Logo */}
                 <div className="px-8 mb-10 flex items-center gap-3">
-                    <Cloud className="w-8 h-8 text-blue-600 dark:text-blue-500 fill-blue-600 dark:fill-blue-500" />
+                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-lg">P</div>
                     <span className="text-2xl font-bold tracking-tight text-foreground">
-                        Cloud<span className="text-blue-600 dark:text-blue-500">Drive</span>
+                        Paperfold
                     </span>
                 </div>
 
@@ -716,7 +721,7 @@ export default function Dashboard() {
                             <p className="text-lg font-bold text-foreground">{storageUsage}</p>
                             <p className="text-xs text-primary font-medium bg-primary/10 px-2 py-0.5 rounded-full">Used</p>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">Telegram Unlimited Cloud</p>
+                        <p className="text-xs text-muted-foreground mt-1">Paperfold Unlimited Cloud</p>
                     </div>
                 </div>
                 {/* User Profile */}
