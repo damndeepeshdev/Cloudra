@@ -23,8 +23,6 @@ import {
     Plus,
     FolderPlus,
     LayoutGrid,
-    Sun,
-    Moon,
     Pencil
 } from 'lucide-react';
 import FileCard, { FileItem } from './FileCard';
@@ -62,7 +60,6 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [newFolderName, setNewFolderName] = useState("");
     const [itemToDelete, setItemToDelete] = useState<{ id: string, isFolder: boolean, name: string, deleteType: 'soft' | 'hard' } | null>(null);
     const [isEmptyTrashOpen, setIsEmptyTrashOpen] = useState(false);
-    const [isDarkMode, setIsDarkMode] = useState(false);
     const [storageUsage, setStorageUsage] = useState<string>("0 KB");
     const [isUploadProgressMinimized, setIsUploadProgressMinimized] = useState(false);
     const [user, setUser] = useState<UserProfile | null>(null);
@@ -74,16 +71,6 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     useEffect(() => {
         invoke<UserProfile>('get_current_user').then(setUser).catch(console.error);
-
-        // Load theme
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-            setIsDarkMode(true);
-        } else {
-            document.documentElement.classList.remove('dark');
-            setIsDarkMode(false);
-        }
     }, []);
 
     // Update Page Title
@@ -372,23 +359,9 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
 
 
-    const handleRename = async (id: string, currentName: string, isFolder: boolean) => {
-        const newName = prompt("Rename to:", currentName);
-        if (newName && newName !== currentName) {
-            try {
-                await invoke('rename_item', {
-                    id,
-                    is_folder: isFolder,
-                    isFolder,
-                    new_name: newName,
-                    newName
-                });
-                setRefresh(prev => prev + 1);
-            } catch (e) {
-                console.error("Rename failed", e);
-                alert("Rename failed: " + e);
-            }
-        }
+    const handleRename = (id: string, currentName: string, isFolder: boolean) => {
+        setRenameItem({ id, type: isFolder ? 'folder' : 'file', name: currentName });
+        setIsRenameOpen(true);
     };
 
     const handleRestore = async (id: string, isFolder: boolean) => {
@@ -414,6 +387,8 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
             setIsLoading(false);
         }
     };
+
+
 
     const handleDeleteForever = (id: string, isFolder: boolean, name: string = "Item") => {
         setItemToDelete({ id, isFolder, name, deleteType: 'hard' });
@@ -533,7 +508,16 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
 
     return (
-        <div className="flex h-screen bg-background text-foreground font-sans selection:bg-blue-200">
+        <div className="flex h-screen bg-[#030712] text-foreground font-sans selection:bg-cyan-500/30 overflow-hidden relative">
+
+            {/* Background Grid Pattern (Technical Look) */}
+            <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
+                style={{
+                    backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
+                    backgroundSize: '40px 40px'
+                }}
+            />
+
             {/* Loading Indicator */}
             <AnimatePresence>
                 {isLoading && (
@@ -541,32 +525,33 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                         initial={{ y: -50, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: -50, opacity: 0 }}
-                        className="fixed top-0 left-1/2 -translate-x-1/2 z-50 bg-blue-600 text-white px-4 py-2 rounded-b-lg shadow-lg text-sm font-medium"
+                        className="fixed top-0 left-1/2 -translate-x-1/2 z-[100] bg-cyan-500/10 backdrop-blur-md border border-cyan-500/20 text-cyan-400 px-6 py-2 rounded-b-xl shadow-[0_0_20px_rgba(6,182,212,0.1)] text-sm font-medium flex items-center gap-2"
                     >
+                        <Loader2 className="w-4 h-4 animate-spin" />
                         Processing...
                     </motion.div>
                 )}
             </AnimatePresence>
 
             {/* Sidebar */}
-            <aside className="w-72 bg-card flex flex-col pt-8 pb-6 border-r border-border z-20 transition-colors" data-tauri-drag-region>
+            <aside className="w-72 bg-transparent flex flex-col pt-8 pb-6 z-20" data-tauri-drag-region>
                 {/* Logo */}
-                <div className="px-8 mb-10 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-lg">P</div>
-                    <span className="text-2xl font-bold tracking-tight text-foreground">
+                <div className="px-8 mb-10 flex items-center gap-3 select-none">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-[0_0_15px_rgba(6,182,212,0.3)]">P</div>
+                    <span className="text-xl font-bold tracking-tight text-white/90">
                         Paperfold
                     </span>
                 </div>
 
                 {/* Primary Actions */}
-                <div className="px-2 mb-6">
+                <div className="px-6 mb-8">
                     <div className="relative">
                         <button
                             onClick={() => setIsNewMenuOpen(!isNewMenuOpen)}
-                            className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] w-full"
+                            className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 px-6 py-3 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] w-full group backdrop-blur-sm"
                         >
-                            <Plus className="w-5 h-5" />
-                            <span className="font-semibold text-base">New</span>
+                            <Plus className="w-5 h-5 text-cyan-400 group-hover:rotate-90 transition-transform" />
+                            <span className="font-medium text-sm tracking-wide">New Upload</span>
                         </button>
 
                         {/* Dropdown */}
@@ -578,14 +563,14 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                         initial={{ opacity: 0, scale: 0.95, y: 10 }}
                                         animate={{ opacity: 1, scale: 1, y: 0 }}
                                         exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                        className="absolute top-full left-0 w-full mt-2 bg-popover text-popover-foreground rounded-xl shadow-xl border border-border p-2 z-20"
+                                        className="absolute top-full left-0 w-full mt-2 bg-[#0A0A0A] border border-white/10 p-1.5 rounded-xl shadow-2xl z-20 backdrop-blur-xl"
                                     >
-                                        <button onClick={(e) => { e.stopPropagation(); openCreateFolderModal(); }} className="flex items-center gap-3 w-full p-2 hover:bg-muted rounded-lg text-left text-sm font-medium text-popover-foreground transition-colors">
-                                            <FolderPlus className="w-4 h-4 text-muted-foreground" />
+                                        <button onClick={(e) => { e.stopPropagation(); openCreateFolderModal(); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-white/5 rounded-lg text-left text-sm font-medium text-gray-300 hover:text-white transition-colors">
+                                            <FolderPlus className="w-4 h-4 text-cyan-500/70" />
                                             New Folder
                                         </button>
-                                        <button onClick={(e) => { e.stopPropagation(); handleUpload(); }} className="flex items-center gap-3 w-full p-2 hover:bg-muted rounded-lg text-left text-sm font-medium text-popover-foreground transition-colors">
-                                            <Upload className="w-4 h-4 text-muted-foreground" />
+                                        <button onClick={(e) => { e.stopPropagation(); handleUpload(); }} className="flex items-center gap-3 w-full p-2.5 hover:bg-white/5 rounded-lg text-left text-sm font-medium text-gray-300 hover:text-white transition-colors">
+                                            <Upload className="w-4 h-4 text-cyan-500/70" />
                                             File Upload
                                         </button>
                                     </motion.div>
@@ -678,7 +663,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                 </AnimatePresence>
 
                 {/* Navigation */}
-                <nav className="flex-1 space-y-1 px-2">
+                <nav className="flex-1 space-y-1 px-4">
                     {[
                         { icon: Home, label: 'My Drive', id: 'drive' as const },
                         { icon: Clock, label: 'Recent', id: 'recent' as const },
@@ -696,12 +681,12 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                     setFolderName('Trash');
                                 }
                             }}
-                            className={`flex items-center gap-3 w-full px-4 py-3 rounded-full text-sm font-medium transition-colors ${currentSection === item.id
-                                ? 'bg-primary/10 text-primary'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${currentSection === item.id
+                                ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                                : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
                                 }`}
                         >
-                            <item.icon className={`w-5 h-5 ${currentSection === item.id ? 'text-primary' : 'text-muted-foreground'}`} />
+                            <item.icon className={`w-[18px] h-[18px] transition-colors ${currentSection === item.id ? 'text-cyan-400' : 'text-gray-500 group-hover:text-gray-300'}`} />
                             {item.label}
                         </button>
                     ))}
@@ -709,34 +694,33 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
                 {/* Storage Status */}
                 <div className="px-6 mt-6">
-                    <div className="p-4 rounded-xl bg-secondary/50 border border-border">
-                        <div className="flex items-center gap-2 mb-2 text-primary">
-                            <Cloud className="w-5 h-5 fill-current" />
-                            <span className="text-sm font-semibold">Storage</span>
+                    <div className="p-4 rounded-xl bg-gradient-to-br from-white/5 to-transparent border border-white/5">
+                        <div className="flex items-center gap-2 mb-3 text-cyan-400">
+                            <Cloud className="w-4 h-4 fill-current opacity-80" />
+                            <span className="text-xs font-bold uppercase tracking-wider opacity-80">Storage</span>
                         </div>
-                        <div className="w-full bg-secondary rounded-full h-1.5 mb-2 overflow-hidden">
-                            <div className="bg-primary h-1.5 rounded-full transition-all duration-500" style={{ width: (storageUsage === '0.00 B' || storageUsage === '0.00 KB' || storageUsage === '0 B') ? '0%' : '5%' }}></div>
+                        <div className="w-full bg-white/5 rounded-full h-1 mb-3 overflow-hidden">
+                            <div className="bg-cyan-400 h-1 rounded-full shadow-[0_0_10px_rgba(34,211,238,0.5)] transition-all duration-500" style={{ width: (storageUsage === '0.00 B' || storageUsage === '0.00 KB' || storageUsage === '0 B') ? '0%' : '5%' }}></div>
                         </div>
                         <div className="flex justify-between items-end">
-                            <p className="text-lg font-bold text-foreground">{storageUsage}</p>
-                            <p className="text-xs text-primary font-medium bg-primary/10 px-2 py-0.5 rounded-full">Used</p>
+                            <p className="text-sm font-mono text-white/90">{storageUsage}</p>
+                            <p className="text-[10px] text-cyan-400 font-medium bg-cyan-950/30 px-2 py-0.5 rounded border border-cyan-500/20">USED</p>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">Paperfold Unlimited Cloud</p>
                     </div>
                 </div>
                 {/* User Profile */}
                 {user && (
                     <div className="px-6 pb-6 mt-auto">
-                        <div className="flex items-center gap-3 p-3 rounded-xl bg-secondary/50 border border-border">
-                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
+                        <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors cursor-pointer group">
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-lg">
                                 {user.first_name[0]}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="font-medium text-foreground text-sm truncate">
+                                <p className="font-medium text-white/90 text-sm truncate group-hover:text-white transition-colors">
                                     {user.first_name} {user.last_name || ''}
                                 </p>
-                                <p className="text-xs text-muted-foreground truncate">
-                                    {user.phone ? `+${user.phone}` : `ID: ${user.id}`}
+                                <p className="text-[10px] text-gray-500 font-mono truncate">
+                                    ID: {user.id}
                                 </p>
                             </div>
                         </div>
@@ -745,22 +729,22 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col overflow-hidden bg-background rounded-tl-3xl shadow-[-10px_-10px_30px_rgba(0,0,0,0.02)] border-l border-t border-border transition-colors duration-200">
+            <main className="flex-1 flex flex-col overflow-hidden bg-[#0A0A0A] m-2 rounded-2xl border border-white/5 relative z-10 shadow-2xl">
 
                 {/* Header */}
-                <header className="h-20 px-8 flex items-center justify-between border-b border-gray-100/50 dark:border-gray-800 transition-colors duration-200">
+                <header className="h-20 px-8 flex items-center justify-between z-20">
 
                     {/* Search */}
-                    <div className="flex-1 max-w-2xl mx-auto px-4 relative z-50">
+                    <div className="flex-1 max-w-2xl mx-auto px-4 relative">
                         <div className="relative group">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-cyan-400 transition-colors" />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onFocus={() => { if (searchQuery.trim().length > 0) setIsSearchOpen(true); }}
-                                placeholder="Search everywhere..."
-                                className="w-full h-12 pl-12 pr-10 bg-muted/50 hover:bg-muted focus:bg-background border border-transparent focus:border-ring rounded-full text-sm transition-all outline-none focus:ring-4 focus:ring-ring/10 placeholder:text-muted-foreground font-medium text-foreground"
+                                placeholder="Search your universe..."
+                                className="w-full h-11 pl-11 pr-10 bg-white/5 hover:bg-white/[0.07] focus:bg-[#111] border border-white/5 focus:border-cyan-500/30 rounded-full text-sm transition-all outline-none focus:ring-4 focus:ring-cyan-500/10 placeholder:text-gray-600 font-medium text-gray-200"
                             />
                             {searchQuery && (
                                 <button
@@ -768,9 +752,9 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                         setSearchQuery('');
                                         setIsSearchOpen(false);
                                     }}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-secondary rounded-full text-muted-foreground hover:text-foreground transition-colors"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded-full text-gray-500 hover:text-white transition-colors"
                                 >
-                                    <X className="w-4 h-4" />
+                                    <X className="w-3 h-3" />
                                 </button>
                             )}
                         </div>
@@ -784,38 +768,38 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                         initial={{ opacity: 0, y: 10, scale: 0.98 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                                        className="absolute top-full left-4 right-4 mt-2 bg-popover/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl overflow-hidden z-20 max-h-[60vh] flex flex-col"
+                                        className="absolute top-full left-4 right-4 mt-2 bg-[#111] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-20 max-h-[60vh] flex flex-col backdrop-blur-3xl"
                                     >
                                         <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
                                             {searchResults.folders.length === 0 && searchResults.files.length === 0 ? (
-                                                <div className="p-8 text-center text-muted-foreground">
-                                                    <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                                                    <p>No results found for "{searchQuery}"</p>
+                                                <div className="p-8 text-center text-gray-500">
+                                                    <Search className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                                                    <p className="text-sm">No results found for "{searchQuery}"</p>
                                                 </div>
                                             ) : (
                                                 <>
                                                     {/* Folders Section */}
                                                     {searchResults.folders.length > 0 && (
                                                         <div className="mb-4">
-                                                            <h3 className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Folders</h3>
+                                                            <h3 className="px-3 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Folders</h3>
                                                             {searchResults.folders.map(folder => (
                                                                 <button
                                                                     key={folder.id}
                                                                     onClick={() => {
                                                                         setCurrentFolder(folder.id);
                                                                         setFolderName(folder.name);
-                                                                        setBreadcrumbs(prev => [...prev, { id: folder.id, name: folder.name }]); // This is simplistic, ideally we fetch path
+                                                                        setBreadcrumbs(prev => [...prev, { id: folder.id, name: folder.name }]);
                                                                         setIsSearchOpen(false);
                                                                         setSearchQuery('');
                                                                     }}
-                                                                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left group"
+                                                                    className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/5 transition-colors text-left group border border-transparent hover:border-white/5"
                                                                 >
-                                                                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
-                                                                        <FolderIcon className="w-5 h-5 fill-current" />
+                                                                    <div className="w-9 h-9 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+                                                                        <FolderIcon className="w-4 h-4 fill-current" />
                                                                     </div>
                                                                     <div>
-                                                                        <p className="font-medium text-foreground">{folder.name}</p>
-                                                                        <p className="text-xs text-muted-foreground">Folder</p>
+                                                                        <p className="font-medium text-gray-200 text-sm group-hover:text-white transition-colors">{folder.name}</p>
+                                                                        <p className="text-[10px] text-gray-500 font-mono">FOLDER</p>
                                                                     </div>
                                                                 </button>
                                                             ))}
@@ -825,7 +809,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                                     {/* Files Section */}
                                                     {searchResults.files.length > 0 && (
                                                         <div>
-                                                            <h3 className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Files</h3>
+                                                            <h3 className="px-3 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Files</h3>
                                                             {searchResults.files.map(file => (
                                                                 <button
                                                                     key={file.id}
@@ -833,14 +817,14 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                                                         handlePreview({ ...file, type: 'file', size: formatSize(file.size) });
                                                                         setIsSearchOpen(false);
                                                                     }}
-                                                                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left group"
+                                                                    className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/5 transition-colors text-left group border border-transparent hover:border-white/5"
                                                                 >
-                                                                    <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-foreground group-hover:scale-110 transition-transform">
-                                                                        <FileIcon className="w-5 h-5" />
+                                                                    <div className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 group-hover:text-cyan-400 group-hover:scale-110 transition-transform">
+                                                                        <FileIcon className="w-4 h-4" />
                                                                     </div>
                                                                     <div className="flex-1 min-w-0">
-                                                                        <p className="font-medium text-foreground truncate">{file.name}</p>
-                                                                        <p className="text-xs text-muted-foreground">{formatSize(file.size)} • {formatDate(new Date(file.created_at * 1000).toISOString())}</p>
+                                                                        <p className="font-medium text-gray-200 text-sm truncate group-hover:text-white transition-colors">{file.name}</p>
+                                                                        <p className="text-[10px] text-gray-500 font-mono">{formatSize(file.size)} • {formatDate(new Date(file.created_at * 1000).toISOString())}</p>
                                                                     </div>
                                                                 </button>
                                                             ))}
@@ -856,79 +840,61 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-3 ml-4">
+                    <div className="flex items-center gap-2 ml-4">
                         <button
                             onClick={async () => {
                                 setIsRefreshing(true);
                                 setRefresh(prev => prev + 1);
                                 await fetchStorageUsage();
-                                // Add a small delay so the user sees the spin
                                 setTimeout(() => setIsRefreshing(false), 800);
                             }}
-                            className="p-3 hover:bg-muted rounded-full text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                            className="p-2.5 hover:bg-white/5 border border-transparent hover:border-white/10 rounded-full text-gray-400 hover:text-cyan-400 transition-all disabled:opacity-50"
                             title="Refresh"
                             disabled={isRefreshing}
                         >
-                            <RotateCw className={`w-6 h-6 ${isRefreshing ? 'animate-spin' : ''}`} />
+                            <RotateCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
                         </button>
                         <button
                             onClick={handleLogout}
-                            className="p-3 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-full transition-colors"
+                            className="p-2.5 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 text-gray-400 hover:text-red-400 rounded-full transition-all"
                             title="Log Out"
                         >
-                            <LogOut className="w-6 h-6" />
+                            <LogOut className="w-5 h-5" />
                         </button>
-                        <button
-                            onClick={() => {
-                                const newMode = !isDarkMode;
-                                if (newMode) {
-                                    document.documentElement.classList.add('dark');
-                                    localStorage.setItem('theme', 'dark');
-                                } else {
-                                    document.documentElement.classList.remove('dark');
-                                    localStorage.setItem('theme', 'light');
-                                }
-                                setIsDarkMode(newMode);
-                            }}
-                            className="p-3 hover:bg-muted rounded-full text-muted-foreground hover:text-primary transition-colors"
-                        >
-                            {isDarkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
-                        </button>
-
+                        {/* Theme toggle removed intentionally as we are enforcing dark mode for this aesthetic, or hiding it */}
                     </div>
                 </header>
 
                 {/* Empty Trash Modal */}
-                {/* Empty Trash Modal */}
                 <AnimatePresence>
                     {isEmptyTrashOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
                             <motion.div
                                 initial={{ opacity: 0, scale: 0.95 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-background rounded-2xl shadow-xl p-6 w-96 border border-border"
+                                className="bg-[#0A0A0A] rounded-2xl shadow-2xl p-6 w-96 border border-white/10"
                             >
                                 <div className="flex flex-col items-center text-center mb-6">
-                                    <div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mb-4 text-destructive">
+                                    <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
                                         <Trash2 className="w-6 h-6" />
                                     </div>
-                                    <h3 className="text-lg font-semibold text-foreground">Empty Trash?</h3>
-                                    <p className="text-sm text-muted-foreground mt-2">
-                                        Are you sure you want to delete <span className="font-medium text-foreground">all items</span> in the trash?
-                                        <br /><span className="text-destructive font-bold">This action cannot be undone.</span>
+                                    <h3 className="text-lg font-bold text-white">Empty Trash?</h3>
+                                    <p className="text-sm text-gray-400 mt-2">
+                                        Are you sure you want to delete <span className="font-medium text-white">all items</span> in the trash?
+                                        <br /><span className="text-red-400 font-medium">This action cannot be undone.</span>
                                     </p>
                                 </div>
                                 <div className="flex justify-end gap-3">
                                     <button
                                         onClick={() => setIsEmptyTrashOpen(false)}
-                                        className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex-1 bg-secondary rounded-lg hover:bg-secondary/80"
+                                        className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors flex-1 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         onClick={handleEmptyTrash}
-                                        className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-red-600/20 flex-1"
+                                        className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-red-600/20 flex-1 border border-red-500/50"
                                     >
                                         Empty Trash
                                     </button>
@@ -940,15 +906,15 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
                 {/* Toolbar / Breadcrumbs */}
                 <div className="px-8 py-6 flex items-center justify-between shrink-0">
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm font-medium">
+                    <div className="flex items-center gap-2 text-gray-400 text-sm font-medium">
                         {breadcrumbs.map((crumb, index) => (
                             <div key={index} className="flex items-center gap-2">
-                                {index > 0 && <ChevronRight className="w-4 h-4 text-muted-foreground/50" />}
+                                {index > 0 && <ChevronRight className="w-4 h-4 text-gray-600" />}
                                 <button
                                     onClick={() => handleBreadcrumbClick(index)}
-                                    className={`hover:bg-muted px-2 py-1 rounded-lg transition-colors ${index === breadcrumbs.length - 1
-                                        ? 'text-foreground font-bold'
-                                        : 'hover:text-foreground'
+                                    className={`hover:bg-white/5 px-3 py-1.5 rounded-lg transition-all border border-transparent hover:border-white/5 ${index === breadcrumbs.length - 1
+                                        ? 'text-white font-bold bg-white/5 border-white/5 shadow-sm'
+                                        : 'hover:text-white'
                                         }`}
                                 >
                                     {crumb.name}
@@ -962,57 +928,57 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                             <button
                                 onClick={() => setIsEmptyTrashOpen(true)}
                                 disabled={allItems.length === 0}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-colors text-sm font-medium ${allItems.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all text-sm font-medium ${allItems.length === 0 ? 'opacity-50 cursor-not-allowed' : 'shadow-[0_0_10px_rgba(239,68,68,0.1)]'}`}
                             >
                                 <Trash2 className="w-4 h-4" />
                                 Empty Trash
                             </button>
                         )}
 
-                        <div className="flex items-center gap-2 border border-border rounded-full p-1 bg-card shadow-sm transition-colors">
+                        <div className="flex items-center gap-1 p-1 bg-white/5 border border-white/5 rounded-full shadow-inner">
                             <button
                                 onClick={() => setView('list')}
-                                className={`p-2 rounded-full transition-all ${view === 'list'
-                                    ? 'bg-secondary text-secondary-foreground'
-                                    : 'text-muted-foreground hover:text-foreground'}`}
+                                className={`p-2 rounded-full transition-all duration-300 ${view === 'list'
+                                    ? 'bg-cyan-500/20 text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                                    : 'text-gray-500 hover:text-gray-300'}`}
                             >
-                                <List className="w-5 h-5" />
+                                <List className="w-4 h-4" />
                             </button>
                             <button
                                 onClick={() => setView('grid')}
-                                className={`p-2 rounded-full transition-all ${view === 'grid'
-                                    ? 'bg-secondary text-secondary-foreground'
-                                    : 'text-muted-foreground hover:text-foreground'}`}
+                                className={`p-2 rounded-full transition-all duration-300 ${view === 'grid'
+                                    ? 'bg-cyan-500/20 text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                                    : 'text-gray-500 hover:text-gray-300'}`}
                             >
-                                <LayoutGrid className="w-5 h-5" />
+                                <LayoutGrid className="w-4 h-4" />
                             </button>
                         </div>
                     </div>
                 </div>
 
                 {/* File List */}
-                <div className="flex-1 overflow-auto px-8 pb-8">
+                <div className="flex-1 overflow-auto px-8 pb-8 custom-scrollbar">
                     {view === 'grid' ? (
                         <>
                             {itemsSection(allItems.filter(f => f.type === 'folder'), "Folders")}
                             {itemsSection(allItems.filter(f => f.type === 'file'), "Files")}
                         </>
                     ) : (
-                        <div className="border border-border rounded-xl overflow-hidden bg-card">
+                        <div className="border border-white/5 rounded-2xl overflow-hidden bg-white/[0.02]">
                             <table className="w-full text-sm text-left">
-                                <thead className="bg-muted text-muted-foreground font-medium">
+                                <thead className="bg-white/5 text-gray-400 font-medium font-mono text-xs uppercase tracking-wider">
                                     <tr>
-                                        <th className="px-4 py-3">Name</th>
-                                        <th className="px-4 py-3">Size</th>
-                                        <th className="px-4 py-3">Last Modified</th>
-                                        <th className="px-4 py-3 w-32 text-right">Actions</th>
+                                        <th className="px-6 py-4">Name</th>
+                                        <th className="px-6 py-4">Size</th>
+                                        <th className="px-6 py-4">Last Modified</th>
+                                        <th className="px-6 py-4 w-32 text-right">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-border">
+                                <tbody className="divide-y divide-white/5">
                                     {allItems.map(item => (
                                         <tr
                                             key={item.id}
-                                            className="hover:bg-muted/50 transition-colors group cursor-pointer"
+                                            className="hover:bg-white/5 transition-colors group cursor-pointer"
                                             onClick={(e) => {
                                                 if ((e.target as HTMLElement).closest('button')) return;
                                                 if (item.type === 'folder') {
@@ -1023,19 +989,19 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                                 }
                                             }}
                                         >
-                                            <td className="px-4 py-3 font-medium text-card-foreground flex items-center gap-3">
-                                                <div className={`p-2 rounded-lg ${item.type === 'folder' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground'}`}>
-                                                    {item.type === 'folder' ? <FolderIcon className="w-4 h-4" /> : <FileIcon className="w-4 h-4" />}
+                                            <td className="px-6 py-3.5 font-medium text-gray-200 flex items-center gap-3">
+                                                <div className={`p-2 rounded-lg ${item.type === 'folder' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-white/10 text-gray-400'}`}>
+                                                    {item.type === 'folder' ? <FolderIcon className="w-4 h-4 fill-current" /> : <FileIcon className="w-4 h-4" />}
                                                 </div>
                                                 {item.name}
                                             </td>
-                                            <td className="px-4 py-3 text-muted-foreground">
+                                            <td className="px-6 py-3.5 text-gray-500 font-mono text-xs">
                                                 {item.type === 'file' ? formatSize(item.size) : '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-muted-foreground">
+                                            <td className="px-6 py-3.5 text-gray-500 font-mono text-xs">
                                                 {item.modified ? formatDate(item.modified) : '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-right">
+                                            <td className="px-6 py-3.5 text-right">
                                                 <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button
                                                         onClick={(e) => {
@@ -1043,7 +1009,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                                             setRenameItem({ id: item.id, type: item.type, name: item.name });
                                                             setIsRenameOpen(true);
                                                         }}
-                                                        className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                                                        className="p-1.5 hover:bg-white/10 rounded text-gray-500 hover:text-white transition-colors"
                                                         title="Rename"
                                                     >
                                                         <Pencil className="w-4 h-4" />
@@ -1054,7 +1020,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                                             e.stopPropagation();
                                                             handleToggleStar(item);
                                                         }}
-                                                        className={`p-1.5 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded ${item.is_starred ? 'text-yellow-500' : 'text-muted-foreground hover:text-yellow-500'}`}
+                                                        className={`p-1.5 hover:bg-yellow-500/10 rounded transition-colors ${item.is_starred ? 'text-yellow-500' : 'text-gray-500 hover:text-yellow-500'}`}
                                                         title={item.is_starred ? "Unstar" : "Star"}
                                                     >
                                                         <Star className={`w-4 h-4 ${item.is_starred ? 'fill-current' : ''}`} />
@@ -1066,7 +1032,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                                                 e.stopPropagation();
                                                                 handleDownload(item.id);
                                                             }}
-                                                            className="p-1.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                                                            className="p-1.5 hover:bg-white/10 rounded text-gray-500 hover:text-white transition-colors"
                                                             title="Download"
                                                         >
                                                             <Upload className="w-4 h-4 rotate-180" />
@@ -1078,7 +1044,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                                             e.stopPropagation();
                                                             handleTrash(item.id, item.type === 'folder', item.name);
                                                         }}
-                                                        className="p-1.5 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive"
+                                                        className="p-1.5 hover:bg-red-500/10 rounded text-gray-500 hover:text-red-500 transition-colors"
                                                         title="Delete"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
@@ -1092,49 +1058,38 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                         </div>
                     )}
 
-                    {allItems.length === 0 && (
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="flex flex-col items-center text-center p-8 max-w-sm mx-auto mt-20"
-                        >
-                            <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-6">
-                                <Cloud className="w-12 h-12 text-muted-foreground/50" />
-                            </div>
-                            <p className="text-lg font-medium text-foreground">Nothing here yet</p>
-                            <p className="text-sm text-muted-foreground mt-2">Upload files or create folders to get started</p>
-                        </motion.div>
-                    )}
+
                 </div>
             </main >
 
             {/* Upload Progress Panel (Google Drive Style) */}
+            {/* Upload Progress Panel (Technical/Cyber) */}
             <AnimatePresence>
                 {uploadQueue.length > 0 && (
                     <motion.div
-                        initial={{ y: 100, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: 100, opacity: 0 }}
-                        className="fixed bottom-6 right-6 w-96 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 flex flex-col"
+                        initial={{ y: 20, opacity: 0, scale: 0.95 }}
+                        animate={{ y: 0, opacity: 1, scale: 1 }}
+                        exit={{ y: 20, opacity: 0, scale: 0.95 }}
+                        className="fixed bottom-6 right-6 w-96 bg-[#111] rounded-xl shadow-[0_0_30px_rgba(0,0,0,0.5)] border border-white/10 overflow-hidden z-50 flex flex-col backdrop-blur-xl"
                     >
                         {/* Header */}
-                        <div className="bg-gray-900 text-white px-4 py-3 flex items-center justify-between">
-                            <span className="font-medium text-sm">
+                        <div className="bg-white/5 border-b border-white/5 px-4 py-3 flex items-center justify-between">
+                            <span className="font-bold text-xs text-white uppercase tracking-wider">
                                 {uploadQueue.filter(i => i.status === 'pending' || i.status === 'uploading').length === 0
-                                    ? "Uploads complete"
-                                    : `Uploading ${uploadQueue.filter(i => i.status === 'pending' || i.status === 'uploading').length} items`
+                                    ? "Operations Complete"
+                                    : `Processing ${uploadQueue.filter(i => i.status === 'pending' || i.status === 'uploading').length} Items`
                                 }
                             </span>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
                                 <button
                                     onClick={() => setIsUploadProgressMinimized(!isUploadProgressMinimized)}
-                                    className="p-1 hover:bg-gray-700 rounded transition-colors"
+                                    className="p-1 hover:bg-white/10 rounded transition-colors text-gray-400 hover:text-white"
                                 >
                                     {isUploadProgressMinimized ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                 </button>
                                 <button
                                     onClick={() => setUploadQueue([])}
-                                    className="p-1 hover:bg-gray-700 rounded transition-colors"
+                                    className="p-1 hover:bg-white/10 rounded transition-colors text-gray-400 hover:text-white"
                                 >
                                     <X className="w-4 h-4" />
                                 </button>
@@ -1143,43 +1098,43 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
                         {/* List */}
                         {!isUploadProgressMinimized && (
-                            <div className="max-h-60 overflow-y-auto bg-white">
+                            <div className="max-h-60 overflow-y-auto bg-black/20 custom-scrollbar">
                                 {uploadQueue.map((item, index) => (
-                                    <div key={index} className="px-4 py-3 border-b border-gray-50 flex items-center gap-3 last:border-0 hover:bg-gray-50 transition-colors">
-                                        <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                    <div key={index} className="px-4 py-3 border-b border-white/5 flex items-center gap-3 last:border-0 hover:bg-white/5 transition-colors">
+                                        <div className="p-2 bg-cyan-500/10 text-cyan-400 rounded-lg">
                                             <FileIcon className="w-4 h-4" />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <p className="text-sm font-medium text-gray-700 truncate">{item.name}</p>
+                                            <div className="flex justify-between items-center mb-1.5">
+                                                <p className="text-sm font-medium text-gray-200 truncate">{item.name}</p>
                                                 {item.status === 'uploading' && (
-                                                    <span className="text-xs text-blue-600 font-medium">{Math.round(item.progress)}%</span>
+                                                    <span className="text-xs text-cyan-400 font-mono">{Math.round(item.progress)}%</span>
                                                 )}
                                             </div>
 
                                             {/* Progress Bar or Status Text */}
                                             {item.status === 'uploading' ? (
-                                                <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                                <div className="w-full bg-white/10 rounded-full h-1 overflow-hidden">
                                                     <motion.div
-                                                        className="bg-blue-600 h-full rounded-full"
+                                                        className="bg-cyan-400 h-full rounded-full shadow-[0_0_10px_rgba(34,211,238,0.5)]"
                                                         initial={{ width: 0 }}
                                                         animate={{ width: `${item.progress}%` }}
-                                                        transition={{ duration: 0.5 }}
+                                                        transition={{ duration: 0.1 }}
                                                     />
                                                 </div>
                                             ) : (
-                                                <p className="text-xs text-gray-400">
-                                                    {item.status === 'pending' && "Waiting..."}
-                                                    {item.status === 'completed' && "Completed"}
-                                                    {item.status === 'error' && "Failed"}
+                                                <p className="text-[10px] text-gray-500 font-mono uppercase">
+                                                    {item.status === 'pending' && "Queued"}
+                                                    {item.status === 'completed' && <span className="text-green-400">Success</span>}
+                                                    {item.status === 'error' && <span className="text-red-400">Failed</span>}
                                                 </p>
                                             )}
                                         </div>
                                         <div>
-                                            {item.status === 'pending' && <div className="w-4 h-4 rounded-full border-2 border-gray-200" />}
-                                            {item.status === 'uploading' && <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />}
-                                            {item.status === 'completed' && <CheckCircle className="w-4 h-4 text-green-500" />}
-                                            {item.status === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                                            {item.status === 'pending' && <div className="w-3 h-3 rounded-full border-2 border-gray-600" />}
+                                            {item.status === 'uploading' && <Loader2 className="w-3 h-3 text-cyan-400 animate-spin" />}
+                                            {item.status === 'completed' && <CheckCircle className="w-3 h-3 text-green-400" />}
+                                            {item.status === 'error' && <AlertCircle className="w-3 h-3 text-red-400" />}
                                         </div>
                                     </div>
                                 ))}
@@ -1190,58 +1145,135 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
             </AnimatePresence>
 
 
+
+
+            {/* Delete Confirmation Modal */}
+            <AnimatePresence>
+                {itemToDelete && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-[#0A0A0A] rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.5)] p-6 w-96 border border-white/10"
+                        >
+                            <div className="flex flex-col items-center text-center mb-6">
+                                <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+                                    <Trash2 className="w-6 h-6" />
+                                </div>
+                                <h3 className="text-lg font-bold text-white">
+                                    {itemToDelete.deleteType === 'hard' ? 'Delete Permanently?' : 'Move to Trash?'}
+                                </h3>
+                                <p className="text-sm text-gray-400 mt-2">
+                                    Are you sure you want to delete <span className="font-medium text-white">{itemToDelete.name}</span>?
+                                    {itemToDelete.deleteType === 'hard' && (
+                                        <><br /><span className="text-red-400 font-medium">This action cannot be undone.</span></>
+                                    )}
+                                </p>
+                            </div>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setItemToDelete(null)}
+                                    className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors flex-1 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmDelete}
+                                    className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-red-600/20 flex-1 border border-red-500/50"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
             {/* Rename Modal */}
             <AnimatePresence>
                 {isRenameOpen && renameItem && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-                        onClick={() => setIsRenameOpen(false)}
-                    >
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md">
                         <motion.div
-                            initial={{ scale: 0.95 }}
-                            animate={{ scale: 1 }}
-                            exit={{ scale: 0.95 }}
-                            className="bg-white dark:bg-gray-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl"
-                            onClick={e => e.stopPropagation()}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-[#0A0A0A] rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.5)] p-6 w-96 border border-white/10"
                         >
-                            <h3 className="text-lg font-semibold mb-4 text-foreground">Rename</h3>
-                            <form onSubmit={async (e) => {
-                                e.preventDefault();
-                                const fd = new FormData(e.currentTarget);
-                                const name = fd.get('name') as string;
-                                if (name && name.trim() !== "" && name !== renameItem.name) {
-                                    try {
-                                        await invoke('rename_item', {
-                                            id: renameItem.id,
-                                            new_name: name,
-                                            is_folder: renameItem.type === 'folder'
-                                        });
-                                        setRefresh(r => r + 1);
-                                        setIsRenameOpen(false);
-                                    } catch (err) {
-                                        alert("Failed to rename: " + err);
-                                    }
-                                } else {
-                                    setIsRenameOpen(false);
-                                }
-                            }}>
-                                <input
-                                    name="name"
-                                    defaultValue={renameItem.name}
-                                    className="w-full p-3 border border-border rounded-xl mb-4 bg-muted/50 text-foreground outline-none focus:ring-2 focus:ring-blue-500"
-                                    autoFocus
-                                    onFocus={e => e.target.select()}
-                                />
-                                <div className="flex justify-end gap-2">
-                                    <button type="button" onClick={() => setIsRenameOpen(false)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">Cancel</button>
-                                    <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">Rename</button>
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-400">
+                                    <Pencil className="w-5 h-5" />
                                 </div>
-                            </form>
+                                <div>
+                                    <h3 className="text-lg font-bold text-white">Rename Item</h3>
+                                    <p className="text-xs text-gray-500 font-mono uppercase tracking-wider">
+                                        {renameItem.type}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mb-6">
+                                <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wide">Name</label>
+                                <input
+                                    value={renameItem.name}
+                                    onChange={(e) => setRenameItem({ ...renameItem, name: e.target.value })}
+                                    className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all font-medium"
+                                    autoFocus
+                                    onKeyDown={async (e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            if (renameItem.name.trim()) {
+                                                try {
+                                                    await invoke('rename_item', {
+                                                        id: renameItem.id,
+                                                        new_name: renameItem.name,
+                                                        newName: renameItem.name,
+                                                        is_folder: renameItem.type === 'folder',
+                                                        isFolder: renameItem.type === 'folder'
+                                                    });
+                                                    setRefresh(r => r + 1);
+                                                    setIsRenameOpen(false);
+                                                } catch (err) {
+                                                    alert("Failed to rename: " + err);
+                                                }
+                                            }
+                                        }
+                                    }}
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setIsRenameOpen(false)}
+                                    className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors flex-1 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (renameItem.name.trim()) {
+                                            try {
+                                                await invoke('rename_item', {
+                                                    id: renameItem.id,
+                                                    new_name: renameItem.name,
+                                                    newName: renameItem.name,
+                                                    is_folder: renameItem.type === 'folder',
+                                                    isFolder: renameItem.type === 'folder'
+                                                });
+                                                setRefresh(r => r + 1);
+                                                setIsRenameOpen(false);
+                                            } catch (err) {
+                                                alert("Failed to rename: " + err);
+                                            }
+                                        }
+                                    }}
+                                    className="px-6 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-cyan-500/20 flex-1"
+                                >
+                                    Rename
+                                </button>
+                            </div>
                         </motion.div>
-                    </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
 

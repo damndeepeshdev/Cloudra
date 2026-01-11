@@ -1,4 +1,4 @@
-import { File, Folder, Download, Trash, Pencil, RotateCcw } from 'lucide-react';
+import { File, Folder, Download, Trash, Pencil, RotateCcw, Star } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export interface FileItem {
@@ -28,7 +28,7 @@ export default function FileCard({ item, onNavigate, onDownload, onDelete, onRen
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             whileHover={{ scale: 1.02 }}
-            className="group relative p-4 bg-card hover:bg-accent/50 border border-border rounded-xl cursor-pointer transition-colors"
+            className="group relative p-4 bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 hover:border-cyan-500/30 rounded-2xl cursor-pointer transition-all duration-300 backdrop-blur-sm shadow-sm hover:shadow-[0_0_20px_rgba(6,182,212,0.1)]"
             onClick={() => {
                 if (item.type === 'folder') {
                     onNavigate?.(item.id);
@@ -37,94 +37,99 @@ export default function FileCard({ item, onNavigate, onDownload, onDelete, onRen
                 }
             }}
         >
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 relative z-10">
                 <div className="flex justify-between items-start">
-                    <div className={`p-3 rounded-lg ${item.type === 'folder' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'bg-secondary text-primary'}`}>
-                        {item.type === 'folder' ? <Folder className="w-6 h-6" /> : <File className="w-6 h-6" />}
+                    <div className={`p-3.5 rounded-xl shadow-inner ${item.type === 'folder'
+                        ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/10'
+                        : 'bg-white/5 text-gray-400 border border-white/5'}`}>
+                        {item.type === 'folder' ? <Folder className="w-5 h-5 fill-current opacity-80" /> : <File className="w-5 h-5" />}
                     </div>
+
+                    {/* Actions Overlay */}
                     <div className="flex gap-1">
                         {onToggleStar && (
                             <button
-                                className={`p-2 rounded-full transition-opacity hover:bg-yellow-50 hover:text-yellow-500 ${item.is_starred ? 'opacity-100 text-yellow-500' : 'opacity-0 group-hover:opacity-100 text-muted-foreground'}`}
+                                className={`p-2 rounded-full transition-all duration-200 ${item.is_starred
+                                    ? 'text-yellow-400 bg-yellow-400/10 opacity-100'
+                                    : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-yellow-400 hover:bg-yellow-400/10'}`}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     onToggleStar(item);
                                 }}
                                 title={item.is_starred ? "Unstar" : "Star"}
                             >
-                                <div className="relative">
-                                    <Trash className="w-4 h-4 opacity-0 absolute" /> {/* Spacer hack or just use Star */}
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        fill={item.is_starred ? "currentColor" : "none"}
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="w-4 h-4"
-                                    >
-                                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                                    </svg>
-                                </div>
+                                <Star className={`w-4 h-4 ${item.is_starred ? 'fill-current' : ''}`} />
                             </button>
                         )}
-                        {onRename && (
+
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            {onRename && (
+                                <button
+                                    className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onRename(item.id);
+                                    }}
+                                    title="Rename"
+                                >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+
+                            {onRestore && (
+                                <button
+                                    className="p-2 hover:bg-green-500/10 rounded-full text-gray-400 hover:text-green-400 transition-colors"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onRestore(item.id);
+                                    }}
+                                    title="Restore"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+
+                            {item.type === 'file' && onDownload && (
+                                <button
+                                    className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onDownload(item.id);
+                                    }}
+                                    title="Download"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+
                             <button
-                                className="p-2 hover:bg-blue-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-blue-500"
+                                className="p-2 hover:bg-red-500/10 rounded-full text-gray-400 hover:text-red-400 transition-colors"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    onRename(item.id);
+                                    onDelete?.(item.id);
                                 }}
-                                title="Rename"
+                                title="Delete"
                             >
-                                <Pencil className="w-4 h-4" />
+                                <Trash className="w-3.5 h-3.5" />
                             </button>
-                        )}
-                        {onRestore && (
-                            <button
-                                className="p-2 hover:bg-green-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-green-500"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onRestore(item.id);
-                                }}
-                                title="Restore"
-                            >
-                                <RotateCcw className="w-4 h-4" />
-                            </button>
-                        )}
-                        {item.type === 'file' && onDownload && (
-                            <button
-                                className="p-2 hover:bg-background rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onDownload(item.id);
-                                }}
-                                title="Download"
-                            >
-                                <Download className="w-4 h-4" />
-                            </button>
-                        )}
-                        <button
-                            className="p-2 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onDelete?.(item.id);
-                            }}
-                            title="Delete"
-                        >
-                            <Trash className="w-4 h-4" />
-                        </button>
+                        </div>
                     </div>
                 </div>
 
                 <div className="space-y-1">
-                    <h3 className="font-medium truncate" title={item.name}>{item.name}</h3>
-                    <p className="text-xs text-muted-foreground">
-                        {item.type === 'folder' ? 'Folder' : item.size} • {item.modified || 'Just now'}
+                    <h3 className="font-medium text-sm text-gray-200 truncate group-hover:text-white transition-colors" title={item.name}>{item.name}</h3>
+                    <p className="text-[10px] text-gray-500 font-mono tracking-wide">
+                        {item.type === 'folder' ? 'FOLDER' : item.size} • {item.modified || 'JUST NOW'}
                     </p>
                 </div>
             </div>
+
+            {/* Folder 'lip' effect purely visual */}
+            {item.type === 'folder' && (
+                <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none">
+                    <Folder className="w-24 h-24 rotate-12 translate-x-4 -translate-y-4" />
+                </div>
+            )}
         </motion.div>
     );
 }
