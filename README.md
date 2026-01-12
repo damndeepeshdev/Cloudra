@@ -103,6 +103,29 @@ We use **GitHub Actions** to automate builds for Windows, macOS, and Linux.
     - **macOS**: `.dmg` / `.app`
     - **Linux**: `.deb` / `.AppImage`
 
+### 🔧 Common Installation Issues
+
+Since Paperfold is a free, open-source project, it is not code-signed with paid certificates. You might encounter security warnings during installation. Here is how to resolve them:
+
+**macOS ("App is damaged" error)**
+1.  Open Terminal.
+2.  Run the following command to remove the quarantine attribute:
+    ```bash
+    xattr -cr /path/to/Paperfold.app
+    ```
+    *(Replace `/path/to/Paperfold.app` with the actual path, usually in your `Downloads` or `Applications` folder).*
+3.  Alternatively, **Right-Click** the app icon and select **Open**.
+
+**Windows ("Windows protected your PC")**
+1.  Click **More info** on the Microsoft Defender SmartScreen popup.
+2.  Click **Run anyway**.
+
+**Linux (App won't open)**
+1.  Right-click the `.AppImage` file.
+2.  Go to **Properties** → **Permissions**.
+3.  Check **Allow executing file as program**.
+4.  Alternatively, run: `chmod +x Paperfold.AppImage`
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request or open an Issue.
