@@ -19,9 +19,19 @@ use db::{FileMetadata, Folder};
 
 // Secrets moved to .env
 
-const SESSION_FILE: &str = "telegram.session";
+const SESSION_FILENAME: &str = "telegram.session";
+
+fn get_session_path(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
+    let app_dir = app_handle
+        .path()
+        .app_data_dir()
+        .expect("failed to get app data dir");
+    std::fs::create_dir_all(&app_dir).unwrap(); // Ensure dir exists
+    app_dir.join(SESSION_FILENAME)
+}
 
 struct AppState {
+    app_handle: tauri::AppHandle,
     client: Arc<AsyncMutex<Option<Client>>>,
     phone_token: Mutex<Option<LoginToken>>, // Changed from phone_hash string
     password_token: Mutex<Option<PasswordToken>>, // For 2FA
@@ -55,7 +65,8 @@ async fn login_start(phone: String, state: State<'_, AppState>) -> Result<String
     for attempt in 0..2 {
         if client_guard.is_none() {
             // Init client if not present
-            let session = Session::load_file_or_create(SESSION_FILE).map_err(|e| e.to_string())?;
+            let session_path = get_session_path(&state.app_handle);
+            let session = Session::load_file_or_create(&session_path).map_err(|e| e.to_string())?;
 
             let params = InitParams {
                 device_model: "Paperfold Desktop".to_string(),
@@ -94,8 +105,9 @@ async fn login_start(phone: String, state: State<'_, AppState>) -> Result<String
                     *client_guard = None;
 
                     // Delete session file to force fresh auth
-                    if std::path::Path::new(SESSION_FILE).exists() {
-                        let _ = std::fs::remove_file(SESSION_FILE);
+                    let session_path = get_session_path(&state.app_handle);
+                    if session_path.exists() {
+                        let _ = std::fs::remove_file(session_path);
                     }
                     continue; // Retry loop
                 }
@@ -134,7 +146,8 @@ async fn login_complete(
                     // Success! Remove from state
                     *state.password_token.lock().unwrap() = None;
                     let data = client.session().save();
-                    std::fs::write(SESSION_FILE, data).map_err(|e| e.to_string())?;
+                    let session_path = get_session_path(&state.app_handle);
+                    std::fs::write(session_path, data).map_err(|e| e.to_string())?;
                     Ok(format!("Logged in as {}", user.first_name()))
                 }
                 Err(e) => {
@@ -161,7 +174,8 @@ async fn login_complete(
         match client.sign_in(&token, &code).await {
             Ok(user) => {
                 let data = client.session().save();
-                std::fs::write(SESSION_FILE, data).map_err(|e| e.to_string())?;
+                let session_path = get_session_path(&state.app_handle);
+                std::fs::write(session_path, data).map_err(|e| e.to_string())?;
                 Ok(format!("Logged in as {}", user.first_name()))
             }
             Err(SignInError::PasswordRequired(token)) => {
@@ -201,7 +215,8 @@ async fn check_auth(state: State<'_, AppState>) -> Result<bool, String> {
     }
 
     // Try load from file
-    if !Path::new(SESSION_FILE).exists() {
+    let session_path = get_session_path(&state.app_handle);
+    if !session_path.exists() {
         return Ok(false);
     }
 
@@ -209,7 +224,7 @@ async fn check_auth(state: State<'_, AppState>) -> Result<bool, String> {
         return Ok(false); // Can't connect without secrets
     }
 
-    let session = Session::load_file_or_create(SESSION_FILE).map_err(|e| e.to_string())?;
+    let session = Session::load_file_or_create(&session_path).map_err(|e| e.to_string())?;
     // Config... (We need repeat config, maybe refactor later but copy-paste for safety now)
     let params = InitParams {
         device_model: "Paperfold Desktop".to_string(),
@@ -240,8 +255,9 @@ async fn logout(state: State<'_, AppState>) -> Result<(), String> {
     let mut client_guard = state.client.lock().await;
     *client_guard = None;
 
-    if std::path::Path::new(SESSION_FILE).exists() {
-        let _ = std::fs::remove_file(SESSION_FILE);
+    let session_path = get_session_path(&state.app_handle);
+    if session_path.exists() {
+        let _ = std::fs::remove_file(session_path);
     }
     Ok(())
 }
@@ -799,6 +815,7 @@ pub fn run() {
             let db = Arc::new(Database::new(app_dir.to_str().unwrap()));
 
             app.manage(AppState {
+                app_handle: app.handle().clone(),
                 client: Arc::new(AsyncMutex::new(None)), // Lazy init
                 phone_token: Mutex::new(None),
                 password_token: Mutex::new(None),
