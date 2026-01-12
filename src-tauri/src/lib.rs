@@ -111,6 +111,27 @@ async fn login_start(phone: String, state: State<'_, AppState>) -> Result<String
                     }
                     continue; // Retry loop
                 }
+                if err_msg.contains("FLOOD_WAIT") {
+                    let seconds = err_msg
+                        .split("value: ")
+                        .nth(1)
+                        .map(|s| s.trim_end_matches(')').trim())
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(0);
+
+                    if seconds > 0 {
+                        let hours = seconds / 3600;
+                        let minutes = (seconds % 3600) / 60;
+                        let secs = seconds % 60;
+                        return Err(format!(
+                            "Too many attempts. Please wait {}h {}m {}s.",
+                            hours, minutes, secs
+                        ));
+                    }
+                    return Err(
+                        "Too many attempts. Please wait a while before trying again.".to_string(),
+                    );
+                }
                 return Err(format!("Failed to send code: {}", e));
             }
         }
@@ -147,7 +168,8 @@ async fn login_complete(
                     *state.password_token.lock().unwrap() = None;
                     let data = client.session().save();
                     let session_path = get_session_path(&state.app_handle);
-                    std::fs::write(session_path, data).map_err(|e| e.to_string())?;
+                    std::fs::write(&session_path, data)
+                        .map_err(|e| format!("Failed to write to {:?}: {}", session_path, e))?;
                     Ok(format!("Logged in as {}", user.first_name()))
                 }
                 Err(e) => {
@@ -175,7 +197,8 @@ async fn login_complete(
             Ok(user) => {
                 let data = client.session().save();
                 let session_path = get_session_path(&state.app_handle);
-                std::fs::write(session_path, data).map_err(|e| e.to_string())?;
+                std::fs::write(&session_path, data)
+                    .map_err(|e| format!("Failed to write to {:?}: {}", session_path, e))?;
                 Ok(format!("Logged in as {}", user.first_name()))
             }
             Err(SignInError::PasswordRequired(token)) => {
