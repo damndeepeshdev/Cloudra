@@ -23,12 +23,17 @@ import {
     Plus,
     FolderPlus,
     LayoutGrid,
-    Pencil
+    Pencil,
+    Music
 } from 'lucide-react';
 import FileCard, { FileItem } from './FileCard';
 import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { readFile } from '@tauri-apps/plugin-fs';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 // We will add opener import after we verify package.json
 // For now, let's just wait.
 import { FileMetadata, Folder } from '../types';
@@ -53,8 +58,11 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [breadcrumbs, setBreadcrumbs] = useState<{ id: string | null, name: string }[]>([{ id: null, name: 'My Drive' }]);
     const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
     const [isRenameOpen, setIsRenameOpen] = useState(false);
+    const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const [renameItem, setRenameItem] = useState<{ id: string, type: 'file' | 'folder', name: string } | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+    const [updateStatus, setUpdateStatus] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
@@ -68,6 +76,12 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [searchQuery, setSearchQuery] = useState("");
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchResults, setSearchResults] = useState<{ folders: Folder[], files: FileMetadata[] }>({ folders: [], files: [] });
+    const [previewingItem, setPreviewingItem] = useState<FileMetadata | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+
+    // Context Menu State
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, item: FileItem } | null>(null);
 
     useEffect(() => {
         invoke<UserProfile>('get_current_user').then(setUser).catch(console.error);
@@ -259,15 +273,46 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
     const handlePreview = async (item: FileItem) => {
         if (item.type === 'file') {
             try {
-                const idNum = parseInt(item.id);
-                if (!isNaN(idNum)) {
-                    await invoke('preview_file', { messageId: idNum });
+                setIsPreviewLoading(true);
+                const file = files.find(f => f.id === item.id);
+                if (!file) return;
+
+                const path = await invoke<string>('preview_file', {
+                    fileId: file.message_id,
+                    fileName: file.name
+                });
+
+                // Fallback attempt: Read file directly using FS plugin
+                try {
+                    const contents = await readFile(path);
+                    const blob = new Blob([contents], { type: file.mime_type || 'application/octet-stream' });
+                    const url = URL.createObjectURL(blob);
+                    setPreviewUrl(url);
+                } catch (readErr) {
+                    console.error("Direct read failed, trying asset url:", readErr);
+                    // Fallback to convertFileSrc if direct read fails (unlikely if plugin works)
+                    setPreviewUrl(convertFileSrc(path));
                 }
+
+                setPreviewingItem(file);
             } catch (e) {
                 console.error("Preview failed", e);
+                alert("Failed to load preview");
+            } finally {
+                setIsPreviewLoading(false);
             }
         }
     };
+
+    // Cleanup blob URLs
+    useEffect(() => {
+        return () => {
+            if (previewUrl && previewUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(previewUrl);
+            }
+        };
+    }, [previewUrl]);
+
 
     const handleTrash = (id: string, isFolder: boolean, name: string) => {
         setItemToDelete({ id, isFolder, name, deleteType: 'soft' });
@@ -469,6 +514,59 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
     };
 
+    const checkForUpdates = async () => {
+        try {
+            setIsCheckingUpdate(true);
+            setUpdateStatus("Checking for updates...");
+
+            const update = await check();
+
+            if (update) {
+                console.log(`found update ${update.version} from ${update.date} with notes ${update.body}`);
+                setUpdateStatus(`Update found: ${update.version}`);
+
+
+                // Let's assume usage of window.confirm for now
+                if (window.confirm(`Update to ${update.version}?`)) {
+                    setUpdateStatus("Downloading update...");
+                    let downloaded = 0;
+                    let contentLength = 0;
+
+                    await update.downloadAndInstall((event) => {
+                        switch (event.event) {
+                            case 'Started':
+                                contentLength = event.data.contentLength || 0;
+                                console.log(`started downloading ${contentLength} bytes`);
+                                break;
+                            case 'Progress':
+                                downloaded += event.data.chunkLength;
+                                console.log(`downloaded ${downloaded} from ${contentLength}`);
+                                // Calculate percentage if needed
+                                break;
+                            case 'Finished':
+                                console.log('download finished');
+                                break;
+                        }
+                    });
+
+                    setUpdateStatus("Update installed. Restarting...");
+                    await relaunch();
+                } else {
+                    setUpdateStatus(null);
+                }
+            } else {
+                setUpdateStatus("You are up to date!");
+                setTimeout(() => setUpdateStatus(null), 3000);
+            }
+        } catch (e) {
+            console.error("Update check failed", e);
+            setUpdateStatus("Update check failed.");
+            setTimeout(() => setUpdateStatus(null), 3000);
+        } finally {
+            setIsCheckingUpdate(false);
+        }
+    };
+
     const allItems: FileItem[] = [
         ...folders.map(f => ({ id: f.id, name: f.name, type: 'folder' as const, modified: 'Just now', is_starred: f.is_starred })),
         ...uploadQueue.filter(q => q.status === 'pending' || q.status === 'uploading').map((q, i) => ({
@@ -478,7 +576,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
             size: q.status === 'uploading' ? 'Uploading...' : 'Queued',
             mimeType: 'application/octet-stream' // placeholder
         })),
-        ...files.map(f => ({ id: f.id, name: f.name, type: 'file' as const, size: (f.size / 1024 / 1024).toFixed(2) + ' MB', mimeType: f.mime_type, is_starred: f.is_starred }))
+        ...files.map(f => ({ id: f.id, name: f.name, type: 'file' as const, size: (f.size / 1024 / 1024).toFixed(2) + ' MB', mimeType: f.mime_type, is_starred: f.is_starred, thumbnail: f.thumbnail }))
     ];
 
     function itemsSection(items: FileItem[], title: string) {
@@ -491,15 +589,12 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                         <FileCard
                             key={file.id}
                             item={file}
-                            onToggleStar={(item) => handleToggleStar(item)}
                             onNavigate={currentSection === 'trash' ? undefined : (id) => handleNavigate(id, file.name)}
-                            onDownload={currentSection === 'trash' ? undefined : handleDownload}
-                            onDelete={(id) => currentSection === 'trash'
-                                ? handleDeleteForever(id, file.type === 'folder', file.name)
-                                : handleDelete(id, file.name, file.type === 'folder')
-                            }
-                            onRename={currentSection === 'trash' ? undefined : (id) => handleRename(id, file.name, file.type === 'folder')}
-                            onRestore={currentSection === 'trash' ? (id) => handleRestore(id, file.type === 'folder') : undefined}
+                            onPreview={handlePreview}
+                            onContextMenu={(e, item) => {
+                                e.preventDefault();
+                                setContextMenu({ x: e.clientX, y: e.clientY, item });
+                            }}
                         />
                     ))}
                 </div>
@@ -823,13 +918,59 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                         >
                             <RotateCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
                         </button>
-                        <button
-                            onClick={handleLogout}
-                            className="p-2.5 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 text-gray-400 hover:text-red-400 rounded-full transition-all"
-                            title="Log Out"
-                        >
-                            <LogOut className="w-5 h-5" />
-                        </button>
+                        {/* User Menu */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                                className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 p-[2px] shadow-[0_0_10px_rgba(6,182,212,0.3)] hover:scale-105 transition-transform"
+                            >
+                                <div className="w-full h-full rounded-full bg-[#0A0A0A] flex items-center justify-center text-white font-bold text-sm uppercase">
+                                    {user?.first_name ? user.first_name[0] : 'U'}
+                                </div>
+                            </button>
+
+                            <AnimatePresence>
+                                {isUserMenuOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setIsUserMenuOpen(false)} />
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            className="absolute right-0 top-14 w-64 bg-[#111] border border-white/10 rounded-xl shadow-2xl p-2 z-20 backdrop-blur-xl flex flex-col gap-1"
+                                        >
+                                            <div className="p-3 border-b border-white/5 mb-1">
+                                                <p className="font-bold text-white mb-0.5">{user?.first_name} {user?.last_name || ''}</p>
+                                                {user?.username && <p className="text-xs text-gray-500 font-mono">@{user.username}</p>}
+                                                {user?.id && <p className="text-[10px] text-gray-600 font-mono mt-1">ID: {user.id}</p>}
+                                            </div>
+
+                                            <button
+                                                onClick={() => { checkForUpdates(); setIsUserMenuOpen(false); }}
+                                                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
+                                            >
+                                                <RotateCw className={`w-4 h-4 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                                                Check for Updates
+                                            </button>
+
+                                            {updateStatus && (
+                                                <div className="px-3 py-2 text-xs text-cyan-400 font-mono break-words">
+                                                    {updateStatus}
+                                                </div>
+                                            )}
+
+                                            <button
+                                                onClick={handleLogout}
+                                                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left"
+                                            >
+                                                <LogOut className="w-4 h-4" />
+                                                Log Out
+                                            </button>
+                                        </motion.div>
+                                    </>
+                                )}
+                            </AnimatePresence>
+                        </div>
                         {/* Theme toggle removed intentionally as we are enforcing dark mode for this aesthetic, or hiding it */}
                     </div>
                 </header>
@@ -1246,6 +1387,252 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                 )}
             </AnimatePresence>
 
-        </div >
+            {/* Preview Modal */}
+            <AnimatePresence>
+                {previewingItem && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 md:p-10">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            className="bg-[#0A0A0A] rounded-2xl border border-white/10 w-full max-w-5xl h-full max-h-[90vh] flex flex-col overflow-hidden relative shadow-2xl"
+                        >
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-4 border-b border-white/10">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center text-gray-400">
+                                        <FileIcon className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-white font-medium text-sm">{previewingItem.name}</h3>
+                                        <p className="text-[10px] text-gray-500 font-mono tracking-wider uppercase">
+                                            {formatSize(previewingItem.size)} • {previewingItem.mime_type}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => handleDownload(previewingItem.id)}
+                                        className="p-2 hover:bg-white/5 rounded-full text-gray-400 hover:text-white transition-colors"
+                                        title="Download"
+                                    >
+                                        <Cloud className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setPreviewingItem(null);
+                                            setPreviewUrl(null);
+                                        }}
+                                        className="p-2 hover:bg-white/5 rounded-full text-gray-400 hover:text-white transition-colors"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 overflow-hidden bg-black/40 relative flex items-center justify-center p-4">
+                                {isPreviewLoading ? (
+                                    <div className="flex flex-col items-center gap-4">
+                                        <Loader2 className="w-10 h-10 text-cyan-500 animate-spin" />
+                                        <p className="text-sm text-gray-400 animate-pulse">Fetching high-quality media from Telegram...</p>
+                                    </div>
+                                ) : previewUrl ? (
+                                    <div className="w-full h-full flex items-center justify-center p-4">
+                                        {(() => {
+                                            const name = previewingItem.name.toLowerCase();
+                                            const mime = (previewingItem.mime_type || '').toLowerCase();
+
+                                            const isImage = (mime.startsWith('image/') ||
+                                                /\.(jpg|jpeg|png|webp|svg|bmp)$/i.test(name)) && !name.endsWith('.gif'); // Exclude .gif here
+
+                                            // Treated as video for playback control (looping)
+                                            const isVideo = mime.startsWith('video/') ||
+                                                /\.(mp4|mov|avi|wmv|flv|webm|mkv|gif)$/i.test(name);
+
+                                            const isAudio = mime.startsWith('audio/') ||
+                                                /\.(mp3|wav|ogg|m4a|flac)$/i.test(name);
+
+                                            const isPdf = mime === 'application/pdf' || name.endsWith('.pdf');
+
+                                            if (isImage) {
+                                                return (
+                                                    <img
+                                                        src={previewUrl}
+                                                        alt={previewingItem.name}
+                                                        className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                                                    />
+                                                );
+                                            } else if (isVideo) {
+                                                const isGif = name.endsWith('.gif');
+                                                // If it's a small MP4 (Telegram often converts gifs to mp4), treat as gif
+                                                // For now relying on extension is safest for "GIF user exp".
+
+                                                return (
+                                                    <div className="relative w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10 group flex items-center justify-center">
+                                                        {/* Backdrop blur effect */}
+                                                        <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/10 to-blue-600/10 opacity-50" />
+
+                                                        <video
+                                                            src={previewUrl}
+                                                            controls={!isGif}
+                                                            autoPlay
+                                                            loop={isGif}
+                                                            muted={isGif}
+                                                            playsInline
+                                                            className="w-full h-full object-contain relative z-10"
+                                                        />
+                                                    </div>
+                                                );
+                                            } else if (isAudio) {
+                                                return (
+                                                    <div className="bg-white/5 p-12 rounded-3xl border border-white/5 flex flex-col items-center gap-8 w-full max-w-xl shadow-2xl backdrop-blur-sm">
+                                                        <div className="w-32 h-32 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-600/20 flex items-center justify-center border border-white/10 shadow-[0_0_30px_rgba(6,182,212,0.15)] animate-pulse-slow">
+                                                            <Music className="w-12 h-12 text-cyan-400 fill-current opacity-80" />
+                                                        </div>
+                                                        <div className="text-center w-full">
+                                                            <h3 className="text-xl font-bold text-white mb-2 truncate px-4" title={previewingItem.name}>
+                                                                {previewingItem.name}
+                                                            </h3>
+                                                            <p className="text-sm text-gray-400 font-mono">Audio Preview</p>
+                                                        </div>
+                                                        <audio
+                                                            src={previewUrl}
+                                                            controls
+                                                            autoPlay
+                                                            className="w-full"
+                                                        />
+                                                    </div>
+                                                );
+                                            } else if (isPdf) {
+                                                return (
+                                                    <iframe
+                                                        src={previewUrl}
+                                                        className="w-full h-full rounded-xl bg-white shadow-2xl border-none"
+                                                        title="PDF Preview"
+                                                    />
+                                                );
+                                            } else {
+                                                return (
+                                                    <div className="text-center p-12 bg-white/5 rounded-3xl border border-white/5 max-w-md backdrop-blur-sm">
+                                                        <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-white/5 flex items-center justify-center">
+                                                            <AlertCircle className="w-10 h-10 text-gray-400" />
+                                                        </div>
+                                                        <h4 className="text-xl font-bold text-white mb-2">Preview Not Available</h4>
+                                                        <p className="text-sm text-gray-400 mb-8 leading-relaxed">
+                                                            We can't preview this file type directly in Paperfold yet.
+                                                            <br />Please download it to view locally.
+                                                        </p>
+                                                        <button
+                                                            onClick={() => handleDownload(previewingItem.id)}
+                                                            className="px-8 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 hover:scale-105 active:scale-95"
+                                                        >
+                                                            Download File
+                                                        </button>
+                                                    </div>
+                                                );
+                                            }
+                                        })()}
+                                    </div>
+                                ) : null}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Context Menu */}
+            <AnimatePresence>
+                {contextMenu && (
+                    <>
+                        {/* Backdrop to close menu */}
+                        <div
+                            className="fixed inset-0 z-50"
+                            onClick={() => setContextMenu(null)}
+                            onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+                        />
+
+                        {/* Menu */}
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.1 }}
+                            className="fixed z-50 bg-[#111] border border-white/10 rounded-xl shadow-2xl p-1.5 min-w-[180px] backdrop-blur-xl"
+                            style={{
+                                top: Math.min(contextMenu.y, window.innerHeight - 200),
+                                left: Math.min(contextMenu.x, window.innerWidth - 180)
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="px-2 py-1.5 border-b border-white/5 mb-1">
+                                <p className="text-xs font-medium text-gray-400 truncate max-w-[150px]">{contextMenu.item.name}</p>
+                            </div>
+
+                            {currentSection !== 'trash' ? (
+                                <>
+                                    <button
+                                        onClick={() => { handleToggleStar(contextMenu.item); setContextMenu(null); }}
+                                        className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
+                                    >
+                                        <Star className={`w-4 h-4 ${contextMenu.item.is_starred ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                                        {contextMenu.item.is_starred ? 'Unstar' : 'Star'}
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            handleRename(contextMenu.item.id, contextMenu.item.name, contextMenu.item.type === 'folder');
+                                            setContextMenu(null);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
+                                    >
+                                        <Pencil className="w-4 h-4" />
+                                        Rename
+                                    </button>
+
+                                    {contextMenu.item.type === 'file' && (
+                                        <button
+                                            onClick={() => { handleDownload(contextMenu.item.id); setContextMenu(null); }}
+                                            className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
+                                        >
+                                            <Upload className="w-4 h-4 rotate-180" />
+                                            Download
+                                        </button>
+                                    )}
+
+                                    <div className="h-px bg-white/5 my-1" />
+
+                                    <button
+                                        onClick={() => { handleDelete(contextMenu.item.id, contextMenu.item.name, contextMenu.item.type === 'folder'); setContextMenu(null); }}
+                                        className="w-full flex items-center gap-2 px-2 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Delete
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => { handleRestore(contextMenu.item.id, contextMenu.item.type === 'folder'); setContextMenu(null); }}
+                                        className="w-full flex items-center gap-2 px-2 py-2 text-sm text-green-400 hover:bg-green-500/10 rounded-lg transition-colors text-left"
+                                    >
+                                        <RotateCw className="w-4 h-4" />
+                                        Restore
+                                    </button>
+                                    <button
+                                        onClick={() => { handleDeleteForever(contextMenu.item.id, contextMenu.item.type === 'folder', contextMenu.item.name); setContextMenu(null); }}
+                                        className="w-full flex items-center gap-2 px-2 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Delete Forever
+                                    </button>
+                                </>
+                            )}
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+
+        </div>
     );
 }

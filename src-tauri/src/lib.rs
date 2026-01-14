@@ -2,6 +2,9 @@ use grammers_client::types::{Downloadable, LoginToken, Media, PasswordToken};
 use grammers_client::{Client, Config, InitParams, SignInError};
 use std::sync::Mutex;
 
+use base64::{engine::general_purpose, Engine as _};
+use mime_guess;
+
 use grammers_session::Session;
 use grammers_tl_types as tl;
 use rand::Rng;
@@ -36,6 +39,66 @@ struct AppState {
     phone_token: Mutex<Option<LoginToken>>, // Changed from phone_hash string
     password_token: Mutex<Option<PasswordToken>>, // For 2FA
     db: Arc<Database>,
+}
+
+async fn extract_thumbnail_base64(
+    client: &Client,
+    message: &grammers_client::types::Message,
+) -> Option<String> {
+    use grammers_client::types::Downloadable;
+
+    let media = message.media()?;
+    let thumbs = match &media {
+        Media::Photo(photo) => photo.thumbs(),
+        Media::Document(doc) => doc.thumbs(),
+        _ => Vec::new(),
+    };
+
+    if thumbs.is_empty() {
+        return None;
+    }
+
+    // Try to find a medium sized thumbnail ('m') or 's' (small but decent).
+    // Telegram types: s (90x90), m (320x320), x (800x800), etc.
+    // 'stripped' is tiny < 30px.
+    // We prefer 'm' for a good balance of quality and storage size.
+    // Try to find a medium sized thumbnail ('m') or 's' (small but decent).
+    // Telegram types: s (90x90), m (320x320), x (800x800), etc.
+    // 'stripped' is tiny < 30px.
+    // We prefer 'm' for a good balance of quality and storage size.
+    let thumb = thumbs
+        .iter()
+        .find(|t| t.photo_type() == "m")
+        .or_else(|| thumbs.iter().find(|t| t.photo_type() == "s"))
+        .or_else(|| thumbs.iter().find(|t| t.photo_type() == "w")) // 'w' often used for vector/web previews
+        .or_else(|| thumbs.last()) // Fallback to largest if nothing specific found
+        .or_else(|| thumbs.first()) // Fallback to ANY if largest fails (rare)
+        .cloned()?;
+
+    // If it's something we can get bytes from immediately without a full download iterator,
+    // it's faster, but Client::download_media handles everything uniformly.
+    // We'll download to a tiny temp file to avoid complex stream handling for now.
+    let temp_name = format!("thumb_{}.jpg", rand::random::<u32>());
+    let temp_path = std::env::temp_dir().join(temp_name);
+    let temp_path_str = temp_path.to_string_lossy().to_string();
+
+    match client
+        .download_media(&Downloadable::PhotoSize(thumb.clone()), &temp_path_str)
+        .await
+    {
+        Ok(_) => {
+            if let Ok(bytes) = std::fs::read(&temp_path) {
+                let _ = std::fs::remove_file(temp_path);
+                Some(general_purpose::STANDARD_NO_PAD.encode(&bytes))
+            } else {
+                None
+            }
+        }
+        Err(_) => {
+            let _ = std::fs::remove_file(temp_path);
+            None
+        }
+    }
 }
 
 #[tauri::command]
@@ -448,10 +511,14 @@ async fn upload_file(
         })
     };
 
+    let mime_type = mime_guess::from_path(&path)
+        .first_or_octet_stream()
+        .to_string();
+
     let input_media =
         tl::enums::InputMedia::UploadedDocument(tl::types::InputMediaUploadedDocument {
             file: input_file,
-            mime_type: "application/octet-stream".to_string(),
+            mime_type: mime_type.clone(),
             attributes: vec![tl::enums::DocumentAttribute::Filename(
                 tl::types::DocumentAttributeFilename {
                     file_name: file_name.clone(),
@@ -515,12 +582,24 @@ async fn upload_file(
         _ => 0,
     };
 
+    let mut thumbnail = None;
+    if msg_id != 0 {
+        if let Ok(chat) = client.get_me().await {
+            if let Ok(messages) = client.get_messages_by_id(&chat, &[msg_id]).await {
+                if let Some(Some(msg)) = messages.first() {
+                    thumbnail = extract_thumbnail_base64(&client, msg).await;
+                }
+            }
+        }
+    }
+
     let metadata = state.db.add_file(
         folder_id,
         file_name,
         file_size as i64,
-        "application/octet-stream".to_string(),
+        mime_type,
         msg_id,
+        thumbnail,
     );
 
     Ok(metadata)
@@ -848,6 +927,9 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             login_start,
             login_complete,

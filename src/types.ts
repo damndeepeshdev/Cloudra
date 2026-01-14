@@ -4,8 +4,10 @@ export interface FileMetadata {
     name: string;
     size: number;
     mime_type: string;
+    message_id: number;
     created_at: number;
     is_starred?: boolean;
+    thumbnail?: string;
 }
 
 export interface Folder {

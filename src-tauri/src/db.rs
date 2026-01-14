@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +34,7 @@ pub struct FileMetadata {
     pub trashed_at: Option<i64>,
     #[serde(default)]
     pub is_starred: bool,
+    pub thumbnail: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -77,7 +78,7 @@ impl Database {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
-            
+
         let folder = Folder {
             id: id.clone(),
             parent_id,
@@ -87,7 +88,7 @@ impl Database {
             trashed_at: None,
             is_starred: false,
         };
-        
+
         {
             let mut store = self.store.lock().unwrap();
             store.folders.push(folder);
@@ -98,11 +99,15 @@ impl Database {
 
     pub fn list_contents(&self, folder_id: Option<String>) -> (Vec<Folder>, Vec<FileMetadata>) {
         let store = self.store.lock().unwrap();
-        let folders = store.folders.iter()
+        let folders = store
+            .folders
+            .iter()
             .filter(|f| f.parent_id == folder_id && !f.trashed)
             .cloned()
             .collect();
-        let files = store.files.iter()
+        let files = store
+            .files
+            .iter()
             .filter(|f| f.folder_id == folder_id && !f.trashed)
             .cloned()
             .collect();
@@ -111,14 +116,13 @@ impl Database {
 
     pub fn list_trash(&self) -> (Vec<Folder>, Vec<FileMetadata>) {
         let store = self.store.lock().unwrap();
-        let folders = store.folders.iter()
+        let folders = store
+            .folders
+            .iter()
             .filter(|f| f.trashed)
             .cloned()
             .collect();
-        let files = store.files.iter()
-            .filter(|f| f.trashed)
-            .cloned()
-            .collect();
+        let files = store.files.iter().filter(|f| f.trashed).cloned().collect();
         (folders, files)
     }
 
@@ -126,8 +130,16 @@ impl Database {
         let store = self.store.lock().unwrap();
         store.files.iter().find(|f| f.id == id).cloned()
     }
-    
-    pub fn add_file(&self, folder_id: Option<String>, name: String, size: i64, mime_type: String, message_id: i32) -> FileMetadata {
+
+    pub fn add_file(
+        &self,
+        folder_id: Option<String>,
+        name: String,
+        size: i64,
+        mime_type: String,
+        message_id: i32,
+        thumbnail: Option<String>,
+    ) -> FileMetadata {
         let id = Uuid::new_v4().to_string();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -145,8 +157,9 @@ impl Database {
             trashed: false,
             trashed_at: None,
             is_starred: false,
+            thumbnail,
         };
-        
+
         {
             let mut store = self.store.lock().unwrap();
             store.files.push(file.clone());
@@ -167,11 +180,11 @@ impl Database {
             if let Some(f) = store.folders.iter_mut().find(|f| f.id == id) {
                 f.trashed = true;
                 f.trashed_at = Some(now);
-                
-                // Also trash children recursively? 
-                // For simplicity now, let's just trash the folder. 
+
+                // Also trash children recursively?
+                // For simplicity now, let's just trash the folder.
                 // But logically, children should be hidden too.
-                // If I trash a folder, list_contents won't show it. 
+                // If I trash a folder, list_contents won't show it.
                 // If I enter the folder by ID (if I had a link), list_contents(folder_id) would show children unless I filter them too?
                 // list_contents only filters items WHERE parent_id == folder_id AND !trashed.
                 // So children are effectively hidden because you can't navigate to the parent.
@@ -218,22 +231,24 @@ impl Database {
 
     pub fn delete_folder(&self, id: &str) -> Vec<FileMetadata> {
         let mut store = self.store.lock().unwrap();
-        
+
         // 1. Find all files in this folder (recursive TODO later, for now flat)
-        let deleted_files: Vec<FileMetadata> = store.files.iter()
+        let deleted_files: Vec<FileMetadata> = store
+            .files
+            .iter()
             .filter(|f| f.folder_id.as_deref() == Some(id))
             .cloned()
             .collect();
-            
+
         // 2. Remove files
         store.files.retain(|f| f.folder_id.as_deref() != Some(id));
-        
+
         // 3. Remove folder
         store.folders.retain(|f| f.id != id);
-        
+
         drop(store);
         self.save();
-        
+
         deleted_files
     }
 
@@ -262,81 +277,86 @@ impl Database {
     }
 
     pub fn cleanup_trash(&self, days: i64) -> Vec<FileMetadata> {
-         let mut store = self.store.lock().unwrap();
-         let now = std::time::SystemTime::now()
+        let mut store = self.store.lock().unwrap();
+        let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
-         
-         let limit = now - (days * 24 * 60 * 60);
 
-         // Collect files to be deleted (for telegram deletion)
-         let mut deleted_files = Vec::new();
+        let limit = now - (days * 24 * 60 * 60);
 
-         // 1. Identify valid trash items to remove
-         // Note: If we remove a folder, we need to return its files too?
-         // This is getting complex for auto-cleanup.
-         // Let's just implement individual item cleanup for now.
-         
-         // Files older than limit
-         let files_to_remove: Vec<String> = store.files.iter()
+        // Collect files to be deleted (for telegram deletion)
+        let mut deleted_files = Vec::new();
+
+        // 1. Identify valid trash items to remove
+        // Note: If we remove a folder, we need to return its files too?
+        // This is getting complex for auto-cleanup.
+        // Let's just implement individual item cleanup for now.
+
+        // Files older than limit
+        let files_to_remove: Vec<String> = store
+            .files
+            .iter()
             .filter(|f| f.trashed && f.trashed_at.unwrap_or(0) < limit)
             .map(|f| f.id.clone())
             .collect();
 
-         for id in &files_to_remove {
-             if let Some(f) = store.files.iter().find(|f| f.id == *id) {
-                 deleted_files.push(f.clone());
-             }
-         }
-         store.files.retain(|f| !files_to_remove.contains(&f.id));
+        for id in &files_to_remove {
+            if let Some(f) = store.files.iter().find(|f| f.id == *id) {
+                deleted_files.push(f.clone());
+            }
+        }
+        store.files.retain(|f| !files_to_remove.contains(&f.id));
 
-         // Folders older than limit
-         let folders_to_remove: Vec<String> = store.folders.iter()
+        // Folders older than limit
+        let folders_to_remove: Vec<String> = store
+            .folders
+            .iter()
             .filter(|f| f.trashed && f.trashed_at.unwrap_or(0) < limit)
             .map(|f| f.id.clone())
             .collect();
-            
-         // If folder is removed, its children must be removed too
-         // But children might not be marked trashed? 
-         // For now, let's assume if you trash a folder, we don't necessarily trash children in DB
-         // but they become inaccessible.
-         // When cleaning up a folder, we should delete its children.
-         
-         for fid in folders_to_remove.clone() {
-             let children_files: Vec<FileMetadata> = store.files.iter()
+
+        // If folder is removed, its children must be removed too
+        // But children might not be marked trashed?
+        // For now, let's assume if you trash a folder, we don't necessarily trash children in DB
+        // but they become inaccessible.
+        // When cleaning up a folder, we should delete its children.
+
+        for fid in folders_to_remove.clone() {
+            let children_files: Vec<FileMetadata> = store
+                .files
+                .iter()
                 .filter(|f| f.folder_id.as_deref() == Some(&fid))
                 .cloned()
                 .collect();
-             deleted_files.extend(children_files);
-             store.files.retain(|f| f.folder_id.as_deref() != Some(&fid));
-         }
+            deleted_files.extend(children_files);
+            store.files.retain(|f| f.folder_id.as_deref() != Some(&fid));
+        }
 
-         store.folders.retain(|f| !folders_to_remove.contains(&f.id));
+        store.folders.retain(|f| !folders_to_remove.contains(&f.id));
 
-         drop(store);
-         self.save();
-         
-         deleted_files
+        drop(store);
+        self.save();
+
+        deleted_files
     }
-
 
     pub fn toggle_star(&self, id: &str, is_folder: bool) -> bool {
         let mut store = self.store.lock().unwrap();
         let mut found = false;
-        
+
         if is_folder {
-             if let Some(f) = store.folders.iter_mut().find(|f| f.id == id) {
-                 f.is_starred = !f.is_starred;
-                 found = true;
-             }
+            if let Some(f) = store.folders.iter_mut().find(|f| f.id == id) {
+                f.is_starred = !f.is_starred;
+                found = true;
+            }
         } else {
-             if let Some(f) = store.files.iter_mut().find(|f| f.id == id) {
-                 f.is_starred = !f.is_starred;
-                 found = true;
-             }
+            if let Some(f) = store.files.iter_mut().find(|f| f.id == id) {
+                f.is_starred = !f.is_starred;
+                found = true;
+            }
         }
-        
+
         if found {
             drop(store);
             self.save();
@@ -346,11 +366,15 @@ impl Database {
 
     pub fn get_starred(&self) -> (Vec<Folder>, Vec<FileMetadata>) {
         let store = self.store.lock().unwrap();
-        let folders = store.folders.iter()
+        let folders = store
+            .folders
+            .iter()
             .filter(|f| f.is_starred && !f.trashed)
             .cloned()
             .collect();
-        let files = store.files.iter()
+        let files = store
+            .files
+            .iter()
             .filter(|f| f.is_starred && !f.trashed)
             .cloned()
             .collect();
@@ -360,28 +384,32 @@ impl Database {
     pub fn search_items(&self, query: &str) -> (Vec<Folder>, Vec<FileMetadata>) {
         let store = self.store.lock().unwrap();
         let query_lower = query.to_lowercase();
-        
-        let folders = store.folders.iter()
+
+        let folders = store
+            .folders
+            .iter()
             .filter(|f| !f.trashed && f.name.to_lowercase().contains(&query_lower))
             .cloned()
             .collect();
-            
-        let files = store.files.iter()
+
+        let files = store
+            .files
+            .iter()
             .filter(|f| !f.trashed && f.name.to_lowercase().contains(&query_lower))
             .cloned()
             .collect();
-            
+
         (folders, files)
     }
-
 
     pub fn get_total_usage(&self) -> i64 {
         let store = self.store.lock().unwrap();
         // Sum size of all NON-TRASHED files
-        store.files.iter()
+        store
+            .files
+            .iter()
             .filter(|f| !f.trashed)
             .map(|f| f.size)
             .sum()
     }
-
 }

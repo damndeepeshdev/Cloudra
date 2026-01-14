@@ -1,4 +1,4 @@
-import { File, Folder, Download, Trash, Pencil, RotateCcw, Star } from 'lucide-react';
+import { File as FileIcon, Folder, Star, FileText, Music, Video, Image as ImageIcon, Play } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export interface FileItem {
@@ -7,28 +7,46 @@ export interface FileItem {
     type: 'file' | 'folder';
     size?: string;
     modified?: string;
+    thumbnail?: string;
     mimeType?: string;
     is_starred?: boolean;
 }
 
 interface FileCardProps {
     item: FileItem;
-    onNavigate?: (folderId: string) => void;
-    onDownload?: (fileId: string) => void;
-    onDelete?: (id: string) => void;
-    onRename?: (id: string) => void;
-    onRestore?: (id: string) => void;
+    onNavigate?: (id: string) => void;
     onPreview?: (item: FileItem) => void;
-    onToggleStar?: (item: FileItem) => void;
+    onContextMenu?: (e: React.MouseEvent, item: FileItem) => void;
 }
 
-export default function FileCard({ item, onNavigate, onDownload, onDelete, onRename, onRestore, onPreview, onToggleStar }: FileCardProps) {
+export default function FileCard({ item, onNavigate, onPreview, onContextMenu }: FileCardProps) {
+    const getFileIcon = () => {
+        const name = item.name.toLowerCase();
+        const mime = (item.mimeType || '').toLowerCase();
+
+        if (mime.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(name)) {
+            return <ImageIcon className="w-1/3 h-1/3 text-purple-400 opacity-80" />;
+        }
+        if (mime.startsWith('video/') || /\.(mp4|mov|avi|wmv|flv|webm|mkv)$/i.test(name)) {
+            return <Video className="w-1/3 h-1/3 text-red-400 opacity-80" />;
+        }
+        if (mime.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|flac)$/i.test(name)) {
+            return <Music className="w-1/3 h-1/3 text-yellow-400 opacity-80" />;
+        }
+        if (mime === 'application/pdf' || name.endsWith('.pdf')) {
+            return <FileText className="w-1/3 h-1/3 text-orange-400 opacity-80" />;
+        }
+        return <FileIcon className="w-1/3 h-1/3 text-gray-500" />;
+    };
+
+    const isVideo = (item.mimeType || '').startsWith('video/') || /\.(mp4|mov|avi|wmv|flv|webm|mkv)$/i.test(item.name);
+
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             whileHover={{ scale: 1.02 }}
-            className="group relative p-4 bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 hover:border-cyan-500/30 rounded-2xl cursor-pointer transition-all duration-300 backdrop-blur-sm shadow-sm hover:shadow-[0_0_20px_rgba(6,182,212,0.1)]"
+            className="group relative flex flex-col items-center gap-3 cursor-pointer p-2 rounded-xl transition-all duration-200 hover:bg-white/5"
             onClick={() => {
                 if (item.type === 'folder') {
                     onNavigate?.(item.id);
@@ -36,100 +54,53 @@ export default function FileCard({ item, onNavigate, onDownload, onDelete, onRen
                     onPreview?.(item);
                 }
             }}
+            onContextMenu={(e) => {
+                e.preventDefault();
+                onContextMenu?.(e, item);
+            }}
         >
-            <div className="flex flex-col gap-4 relative z-10">
-                <div className="flex justify-between items-start">
-                    <div className={`p-3.5 rounded-xl shadow-inner ${item.type === 'folder'
-                        ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/10'
-                        : 'bg-white/5 text-gray-400 border border-white/5'}`}>
-                        {item.type === 'folder' ? <Folder className="w-5 h-5 fill-current opacity-80" /> : <File className="w-5 h-5" />}
-                    </div>
-
-                    {/* Actions Overlay */}
-                    <div className="flex gap-1">
-                        {onToggleStar && (
-                            <button
-                                className={`p-2 rounded-full transition-all duration-200 ${item.is_starred
-                                    ? 'text-yellow-400 bg-yellow-400/10 opacity-100'
-                                    : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-yellow-400 hover:bg-yellow-400/10'}`}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onToggleStar(item);
-                                }}
-                                title={item.is_starred ? "Unstar" : "Star"}
-                            >
-                                <Star className={`w-4 h-4 ${item.is_starred ? 'fill-current' : ''}`} />
-                            </button>
+            {/* Thumbnail / Icon Container - Main Visual */}
+            <div className={`w-full aspect-square rounded-2xl shadow-sm relative overflow-hidden flex items-center justify-center transition-all duration-300 ${item.thumbnail
+                ? 'bg-black/50'
+                : item.type === 'folder'
+                    ? 'bg-cyan-500/10 border border-cyan-500/20'
+                    : 'bg-white/5 border border-white/5'
+                }`}>
+                {item.type === 'folder' ? (
+                    <Folder className="w-1/3 h-1/3 fill-current text-cyan-400 opacity-90" />
+                ) : item.thumbnail ? (
+                    <div className="relative w-full h-full">
+                        <img
+                            src={`data:image/jpeg;base64,${item.thumbnail}`}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                        />
+                        {isVideo && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center border border-white/20 shadow-xl">
+                                    <Play className="w-4 h-4 text-white fill-current ml-0.5" />
+                                </div>
+                            </div>
                         )}
-
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                            {onRename && (
-                                <button
-                                    className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onRename(item.id);
-                                    }}
-                                    title="Rename"
-                                >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                            )}
-
-                            {onRestore && (
-                                <button
-                                    className="p-2 hover:bg-green-500/10 rounded-full text-gray-400 hover:text-green-400 transition-colors"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onRestore(item.id);
-                                    }}
-                                    title="Restore"
-                                >
-                                    <RotateCcw className="w-3.5 h-3.5" />
-                                </button>
-                            )}
-
-                            {item.type === 'file' && onDownload && (
-                                <button
-                                    className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onDownload(item.id);
-                                    }}
-                                    title="Download"
-                                >
-                                    <Download className="w-3.5 h-3.5" />
-                                </button>
-                            )}
-
-                            <button
-                                className="p-2 hover:bg-red-500/10 rounded-full text-gray-400 hover:text-red-400 transition-colors"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onDelete?.(item.id);
-                                }}
-                                title="Delete"
-                            >
-                                <Trash className="w-3.5 h-3.5" />
-                            </button>
-                        </div>
                     </div>
-                </div>
+                ) : (
+                    getFileIcon()
+                )}
 
-                <div className="space-y-1">
-                    <h3 className="font-medium text-sm text-gray-200 truncate group-hover:text-white transition-colors" title={item.name}>{item.name}</h3>
-                    <p className="text-[10px] text-gray-500 font-mono tracking-wide">
-                        {item.type === 'folder' ? 'FOLDER' : item.size} • {item.modified || 'JUST NOW'}
-                    </p>
-                </div>
+                {/* Star Overlay Indicator */}
+                {item.is_starred && (
+                    <div className="absolute top-2 right-2 text-yellow-400">
+                        <Star className="w-4 h-4 fill-current drop-shadow-md" />
+                    </div>
+                )}
             </div>
 
-            {/* Folder 'lip' effect purely visual */}
-            {item.type === 'folder' && (
-                <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none">
-                    <Folder className="w-24 h-24 rotate-12 translate-x-4 -translate-y-4" />
-                </div>
-            )}
+            {/* Name */}
+            <div className="text-center w-full px-1">
+                <h3 className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors truncate" title={item.name}>
+                    {item.name}
+                </h3>
+            </div>
         </motion.div>
     );
 }

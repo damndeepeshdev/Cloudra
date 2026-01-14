@@ -1,6 +1,6 @@
 [package]
 name = "paperfold"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -20,8 +20,12 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+base64 = "0.22"
 grammers-client = "0.7"
 grammers-session = "0.7"
 tokio = { version = "1.49.0", features = ["full"] }
@@ -30,3 +34,4 @@ tauri-plugin-dialog = "2.5.0"
 dotenv = "0.15.0"
 grammers-tl-types = "0.7"
 rand = "0.8"
+mime_guess = "2.0"
