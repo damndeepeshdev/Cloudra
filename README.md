@@ -13,23 +13,29 @@ Paperfold is a modern, privacy-focused desktop cloud storage client that leverag
 - **2GB Single File Limit**: Upload individual files up to 2GB (4GB for Premium users).
 - **Unlimited Total Space**: No cap on the total amount of data you can store.
 
-### 🎨 "Technical Galaxy" Design
+### 🎨 Modern UI & Design
 - **Premium Dark Aesthetic**: A deeply immersive dark theme with cyan accents, glassmorphism, and subtle glow effects.
 - **Glassmorphic Interface**: Panels and sidebars feature blurred backdrops for a modern, depth-rich feel.
 - **Micro-Interactions**: Fluid animations powered by `framer-motion` for every interaction.
 - **View Options**: Toggle between **Grid** and **List** views with sortable columns.
+- **Enhanced Thumbnails**: Large, clear visual previews for your media files.
 
 ### 🔍 Powerful Search & Organization
 - **Real-Time Search**: Instantly find files and folders with a type-ahead dropdown search.
 - **Smart Folder System**: Create nested folders to organize your content (metadata stored locally).
-- **Starred Items**: Mark important files or folders with a star for quick access.
+- **Starred Context**: referencing the original location of your starred items.
+- **Refined Navigation**: Context-aware breadcrumbs and sidebar navigation that keeps you oriented.
 - **Recent Files**: Quickly access your most recently uploaded or modified files.
 
 ### ⚡ Advanced File Management
 - **Drag & Drop Uploads**: Seamlessly upload files by dragging them into the app.
 - **Multi-File Queue**: specific visual design for upload progress with "Command Terminal" aesthetics.
-- **Custom Interaction Modals**: Replaced native system prompts with beautiful, theme-consistent modals for Renaming, Deleting, and Creating Folders.
+- **Context Menu**: Right-click on any file or folder to **Star**, **Rename**, **Delete**, or **Download**.
+- **Custom Interaction Modals**: Replaced native system prompts with beautiful, theme-consistent modals.
 - **File Previews**: Click to preview supported files directly within the app.
+
+### 🔄 Seamless Auto-Updates
+- **Always Up-to-Date**: Built-in auto-update functionality ensures you're always on the latest version with new features and fixes.
 
 ### 🗑️ Trash & Recovery
 - **Soft Delete**: Deleted items move to a Trash bin first.

@@ -18,7 +18,6 @@ use tokio::sync::Semaphore;
 
 pub mod db;
 use db::Database;
-use db::{FileMetadata, Folder};
 
 // Secrets moved to .env
 
@@ -871,11 +870,63 @@ async fn toggle_star(
     }
 }
 
+#[derive(serde::Serialize)]
+pub struct EnrichedFolder {
+    #[serde(flatten)]
+    pub item: db::Folder,
+    pub path_display: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct EnrichedFile {
+    #[serde(flatten)]
+    pub item: db::FileMetadata,
+    pub path_display: Option<String>,
+}
+
 #[tauri::command]
 async fn fetch_starred(
     state: State<'_, AppState>,
-) -> Result<(Vec<Folder>, Vec<FileMetadata>), String> {
-    Ok(state.db.get_starred())
+) -> Result<(Vec<EnrichedFolder>, Vec<EnrichedFile>), String> {
+    let (folders, files) = state.db.get_starred();
+
+    let enriched_folders = folders
+        .into_iter()
+        .map(|f| {
+            let path_display = if let Some(fid) = &f.parent_id {
+                state
+                    .db
+                    .lookup_folder_name(fid)
+                    .map(|name| format!("In: {}", name))
+            } else {
+                Some("In: My Drive".to_string())
+            };
+            EnrichedFolder {
+                item: f,
+                path_display,
+            }
+        })
+        .collect();
+
+    let enriched_files = files
+        .into_iter()
+        .map(|f| {
+            let path_display = if let Some(fid) = &f.folder_id {
+                state
+                    .db
+                    .lookup_folder_name(fid)
+                    .map(|name| format!("In: {}", name))
+            } else {
+                Some("In: My Drive".to_string())
+            };
+            EnrichedFile {
+                item: f,
+                path_display,
+            }
+        })
+        .collect();
+
+    Ok((enriched_folders, enriched_files))
 }
 
 #[tauri::command]

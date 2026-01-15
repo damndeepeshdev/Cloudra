@@ -10,16 +10,19 @@ export interface FileItem {
     thumbnail?: string;
     mimeType?: string;
     is_starred?: boolean;
+    path_display?: string;
 }
 
 interface FileCardProps {
     item: FileItem;
+    isSelected?: boolean;
     onNavigate?: (id: string) => void;
     onPreview?: (item: FileItem) => void;
     onContextMenu?: (e: React.MouseEvent, item: FileItem) => void;
+    onClick?: (e: React.MouseEvent, item: FileItem) => void;
 }
 
-export default function FileCard({ item, onNavigate, onPreview, onContextMenu }: FileCardProps) {
+export default function FileCard({ item, isSelected, onNavigate, onPreview, onContextMenu, onClick }: FileCardProps) {
     const getFileIcon = () => {
         const name = item.name.toLowerCase();
         const mime = (item.mimeType || '').toLowerCase();
@@ -44,11 +47,18 @@ export default function FileCard({ item, onNavigate, onPreview, onContextMenu }:
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            whileHover={{ scale: 1.02 }}
-            className="group relative flex flex-col items-center gap-3 cursor-pointer p-2 rounded-xl transition-all duration-200 hover:bg-white/5"
-            onClick={() => {
-                if (item.type === 'folder') {
+            animate={{
+                opacity: 1,
+                scale: isSelected ? 0.95 : 1,
+                backgroundColor: isSelected ? 'rgba(6,182,212,0.1)' : 'transparent'
+            }}
+            whileHover={{ scale: isSelected ? 0.97 : 1.02 }}
+            className={`group relative flex flex-col items-center gap-3 cursor-pointer p-2 rounded-xl transition-all duration-200 hover:bg-white/5 ${isSelected ? 'ring-2 ring-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.2)]' : ''
+                }`}
+            onClick={(e) => {
+                if (onClick) {
+                    onClick(e, item);
+                } else if (item.type === 'folder') {
                     onNavigate?.(item.id);
                 } else {
                     onPreview?.(item);

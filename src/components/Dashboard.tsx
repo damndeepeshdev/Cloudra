@@ -66,7 +66,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
     const [isLoading, setIsLoading] = useState(false);
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
-    const [itemToDelete, setItemToDelete] = useState<{ id: string, isFolder: boolean, name: string, deleteType: 'soft' | 'hard' } | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<{ id: string, isFolder: boolean, name: string, deleteType: 'soft' | 'hard', batchIds?: string[] } | null>(null);
     const [isEmptyTrashOpen, setIsEmptyTrashOpen] = useState(false);
     const [storageUsage, setStorageUsage] = useState<string>("0 KB");
     const [isUploadProgressMinimized, setIsUploadProgressMinimized] = useState(false);
@@ -82,6 +82,73 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     // Context Menu State
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, item: FileItem } | null>(null);
+
+    const [uploadQueue, setUploadQueue] = useState<{ path: string, name: string, status: 'pending' | 'uploading' | 'completed' | 'error', progress: number }[]>([]);
+
+    // Real Progress Listener
+    useEffect(() => {
+        let unlisten: () => void;
+        async function setupListener() {
+            unlisten = await listen<{ path: string, progress: number }>('upload-progress', (event) => {
+                setUploadQueue(prev => prev.map(item => {
+                    if (item.path === event.payload.path && item.status === 'uploading') {
+                        return { ...item, progress: event.payload.progress };
+                    }
+                    return item;
+                }));
+            });
+        }
+        setupListener();
+        return () => {
+            if (unlisten) unlisten();
+        };
+    }, []);
+
+    useEffect(() => {
+        const processQueue = async () => {
+            // Concurrency Control: Max 3 parallel files
+            const activeuploads = uploadQueue.filter(item => item.status === 'uploading').length;
+            if (activeuploads >= 3) return;
+
+            const pendingItemIndex = uploadQueue.findIndex(item => item.status === 'pending');
+            if (pendingItemIndex === -1) return;
+
+            const item = uploadQueue[pendingItemIndex];
+
+            // Mark as uploading immediately to prevent duplicate triggers
+            setUploadQueue(prev => prev.map((q, i) => i === pendingItemIndex ? { ...q, status: 'uploading', progress: 0 } : q));
+
+            try {
+                console.log("Starting upload:", item.path, "Target Folder:", (item as any).targetFolderId);
+                // We use the folder that was active WHEN the file was added. 
+                // Currently, we just use 'currentFolder' from state, which might have changed since the file was added to queue?
+                // The user complained about files appearing in wrong folders.
+                // We should probably store the target folder IN the queue item.
+                // For now, let's stick to the requested parallel change, but note that `currentFolder` here is risky if user navigates away.
+                // BETTER: Use the currentFolder at the time of processing? Or should we have captured it?
+                // Standard behavior: Upload to the folder you are IN when it starts? Or when you added it?
+                // Usually when you added it. 
+                // I'll leave `currentFolder` as is for now but this is a potential bug vector for the visibility issue.
+
+                await invoke('upload_file', {
+                    path: item.path,
+                    folder_id: (item as any).targetFolderId,
+                    folderId: (item as any).targetFolderId
+                });
+
+                // Mark as completed
+                setUploadQueue(prev => prev.map((q, i) => i === pendingItemIndex ? { ...q, status: 'completed', progress: 100 } : q));
+                setRefresh(prev => prev + 1);
+            } catch (e) {
+                console.error("Upload failed for", item.path, e);
+                setUploadQueue(prev => prev.map((q, i) => i === pendingItemIndex ? { ...q, status: 'error', progress: 0 } : q));
+                alert(`Failed to upload ${item.name}: ${e}`);
+            }
+        };
+
+        processQueue();
+
+    }, [uploadQueue]); // Re-run when queue changes
 
     useEffect(() => {
         invoke<UserProfile>('get_current_user').then(setUser).catch(console.error);
@@ -156,17 +223,15 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
         fetchFiles();
     }, [currentFolder, refresh]);
 
+    const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+
     const handleNavigate = (folderId: string | null, folderName: string) => {
         console.log("Navigating to:", folderId, folderName);
         setCurrentFolder(folderId);
         setFolderName(folderName);
-        // If navigating to root (null), reset or handle accordingly? 
-        // Actually if folderId is null, it's root.
+        setSelectedItemIds(new Set()); // Clear selection on navigation
         if (folderId) {
             setBreadcrumbs([...breadcrumbs, { id: folderId, name: folderName }]);
-        } else {
-            // Reset to just Home? Or handle in breadcrumb click.
-            // Usually handleNavigate is forward.
         }
     };
 
@@ -177,74 +242,88 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
         const newBreadcrumbs = breadcrumbs.slice(0, index + 1);
         setBreadcrumbs(newBreadcrumbs);
         setFolderName(item.name === 'Home' ? 'My Cloud' : item.name);
+        setSelectedItemIds(new Set()); // Clear selection
     };
 
-    const [uploadQueue, setUploadQueue] = useState<{ path: string, name: string, status: 'pending' | 'uploading' | 'completed' | 'error', progress: number }[]>([]);
+    // Multi-Select Handlers
+    const handleFileClick = (e: React.MouseEvent, item: FileItem) => {
+        // e.metaKey is Cmd on Mac, e.ctrlKey is Ctrl on Windows/Linux
+        const isModifier = e.metaKey || e.ctrlKey;
+        const isShift = e.shiftKey;
 
-    // Real Progress Listener
-    useEffect(() => {
-        let unlisten: () => void;
-        async function setupListener() {
-            unlisten = await listen<{ path: string, progress: number }>('upload-progress', (event) => {
-                setUploadQueue(prev => prev.map(item => {
-                    if (item.path === event.payload.path && item.status === 'uploading') {
-                        return { ...item, progress: event.payload.progress };
-                    }
-                    return item;
-                }));
+        if (isModifier) {
+            // Toggle selection
+            setSelectedItemIds(prev => {
+                const newSet = new Set(prev);
+                if (newSet.has(item.id)) {
+                    newSet.delete(item.id);
+                } else {
+                    newSet.add(item.id);
+                }
+                return newSet;
             });
+        } else if (isShift) {
+            // Range selection - simplified for now: add to selection
+            setSelectedItemIds(prev => {
+                const newSet = new Set(prev);
+                newSet.add(item.id);
+                return newSet;
+            });
+        } else {
+            // Normal click navigation provided by default logic inside onClick wrapper if needed, 
+            // BUT here we interpret "Click" on a file card.
+            // If we want normal click to navigate/preview, we do that here if NOT selecting.
+
+            // If we have a selection and click something else without modifier, usually it clears selection 
+            // AND performs the action (navigate/preview) OR just selects the new item.
+            // Let's stick to: Click = Navigate/Preview, but clears other selections if any.
+            if (selectedItemIds.size > 0) {
+                setSelectedItemIds(new Set());
+            }
+
+            if (item.type === 'folder') {
+                handleNavigate(item.id, item.name);
+            } else {
+                handlePreview(item);
+            }
         }
-        setupListener();
-        return () => {
-            if (unlisten) unlisten();
-        };
-    }, []);
+    };
 
+    // Clear selection when clicking empty space
+    const handleBackgroundClick = (e: React.MouseEvent) => {
+        if (e.target === e.currentTarget) {
+            setSelectedItemIds(new Set());
+        }
+    };
+
+    const allItems: FileItem[] = [
+        ...folders.map(f => ({ id: f.id, name: f.name, type: 'folder' as const, modified: 'Just now', is_starred: f.is_starred })),
+        ...uploadQueue.filter(q => q.status === 'pending' || q.status === 'uploading').map((q, i) => ({
+            id: `upload-${i}`,
+            name: q.name,
+            type: 'file' as const,
+            size: q.status === 'uploading' ? 'Uploading...' : 'Queued',
+            mimeType: 'application/octet-stream' // placeholder
+        })),
+        ...files.map(f => ({ id: f.id, name: f.name, type: 'file' as const, size: (f.size / 1024 / 1024).toFixed(2) + ' MB', mimeType: f.mime_type, is_starred: f.is_starred, thumbnail: f.thumbnail }))
+    ];
+
+    // Keyboard Shortcuts (Select All)
     useEffect(() => {
-        const processQueue = async () => {
-            // Concurrency Control: Max 3 parallel files
-            const activeuploads = uploadQueue.filter(item => item.status === 'uploading').length;
-            if (activeuploads >= 3) return;
-
-            const pendingItemIndex = uploadQueue.findIndex(item => item.status === 'pending');
-            if (pendingItemIndex === -1) return;
-
-            const item = uploadQueue[pendingItemIndex];
-
-            // Mark as uploading immediately to prevent duplicate triggers
-            setUploadQueue(prev => prev.map((q, i) => i === pendingItemIndex ? { ...q, status: 'uploading', progress: 0 } : q));
-
-            try {
-                console.log("Starting upload:", item.path, "Target Folder:", (item as any).targetFolderId);
-                // We use the folder that was active WHEN the file was added. 
-                // Currently, we just use 'currentFolder' from state, which might have changed since the file was added to queue?
-                // The user complained about files appearing in wrong folders.
-                // We should probably store the target folder IN the queue item.
-                // For now, let's stick to the requested parallel change, but note that `currentFolder` here is risky if user navigates away.
-                // BETTER: Use the currentFolder at the time of processing? Or should we have captured it?
-                // Standard behavior: Upload to the folder you are IN when it starts? Or when you added it?
-                // Usually when you added it. 
-                // I'll leave `currentFolder` as is for now but this is a potential bug vector for the visibility issue.
-
-                await invoke('upload_file', {
-                    path: item.path,
-                    folder_id: (item as any).targetFolderId,
-                    folderId: (item as any).targetFolderId
-                });
-
-                // Mark as completed
-                setUploadQueue(prev => prev.map((q, i) => i === pendingItemIndex ? { ...q, status: 'completed', progress: 100 } : q));
-                setRefresh(prev => prev + 1);
-            } catch (e) {
-                console.error("Upload failed for", item.path, e);
-                setUploadQueue(prev => prev.map((q, i) => i === pendingItemIndex ? { ...q, status: 'error', progress: 0 } : q));
-                alert(`Failed to upload ${item.name}: ${e}`);
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+                e.preventDefault();
+                // Select all items in current view
+                const ids = allItems.map(item => item.id);
+                setSelectedItemIds(new Set(ids));
             }
         };
 
-        processQueue();
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [allItems]);
 
-    }, [uploadQueue]); // Re-run when queue changes
+
 
     // Helper Functions
     const formatSize = (bytes?: number | string) => {
@@ -320,28 +399,28 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const handleToggleStar = async (item: FileItem) => {
         try {
-            const isFolder = item.type === 'folder';
-            await invoke('toggle_star', { id: item.id, isFolder });
+            // Batch Logic
+            const itemsToToggle = (selectedItemIds.has(item.id) && selectedItemIds.size > 1)
+                ? allItems.filter(i => selectedItemIds.has(i.id))
+                : [item];
 
-            // Optimistic update
-            if (isFolder) {
-                setFolders(prev => prev.map(f => f.id === item.id ? { ...f, is_starred: !f.is_starred } : f));
-            } else {
-                setFiles(prev => prev.map(f => f.id === item.id ? { ...f, is_starred: !f.is_starred } : f));
+            setIsLoading(true);
+
+            // Execute sequentially to avoid overwhelming SQLite/API
+            for (const i of itemsToToggle) {
+                const isFolder = i.type === 'folder';
+                await invoke('toggle_star', { id: i.id, isFolder });
             }
 
-            // If currently viewing starred items, we might want to remove it from view if unstarred
-            // But immediate removal can be jarring. Let's see. 
-            // If we unstar in starred view, it should probably disappear.
-            if (currentSection === 'starred') {
-                if (isFolder) {
-                    setFolders(prev => prev.filter(f => f.id !== item.id));
-                } else {
-                    setFiles(prev => prev.filter(f => f.id !== item.id));
-                }
-            }
+            // Refresh to ensure consistent state
+            setRefresh(prev => prev + 1);
+
+            // Optimistic update (optional, but refresher handles it safer for batch)
+
         } catch (e) {
             console.error("Failed to toggle star", e);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -411,11 +490,25 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
     const handleRestore = async (id: string, isFolder: boolean) => {
         try {
-            await invoke('restore_item', { id, is_folder: isFolder, isFolder });
+            // Batch Logic
+            const itemsToRestore = (selectedItemIds.has(id) && selectedItemIds.size > 1)
+                ? allItems.filter(i => selectedItemIds.has(i.id))
+                : [allItems.find(i => i.id === id) || { id, type: isFolder ? 'folder' : 'file' } as FileItem];
+
+            setIsLoading(true);
+
+            for (const item of itemsToRestore) {
+                const isItemFolder = item.type === 'folder';
+                await invoke('restore_item', { id: item.id, is_folder: isItemFolder, isFolder: isItemFolder });
+            }
+
             setRefresh(prev => prev + 1);
+            setSelectedItemIds(new Set());
         } catch (e) {
             console.error("Restore failed", e);
             alert("Restore failed: " + e);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -481,21 +574,31 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
 
         try {
             setIsLoading(true);
-            if (itemToDelete.deleteType === 'hard') {
-                await invoke('delete_item_permanently', {
-                    id: itemToDelete.id,
-                    is_folder: itemToDelete.isFolder,
-                    isFolder: itemToDelete.isFolder
-                });
-            } else {
-                await invoke('delete_item', {
-                    id: itemToDelete.id,
-                    is_folder: itemToDelete.isFolder,
-                    isFolder: itemToDelete.isFolder
-                });
+
+            const itemsToDelete = itemToDelete.batchIds
+                ? itemToDelete.batchIds.map(id => allItems.find(i => i.id === id)).filter(Boolean) as FileItem[]
+                : [{ id: itemToDelete.id, type: itemToDelete.isFolder ? 'folder' : 'file' } as FileItem];
+
+            for (const item of itemsToDelete) {
+                const isFolder = item.type === 'folder';
+                if (itemToDelete.deleteType === 'hard') {
+                    await invoke('delete_item_permanently', {
+                        id: item.id,
+                        is_folder: isFolder,
+                        isFolder: isFolder
+                    });
+                } else {
+                    await invoke('delete_item', {
+                        id: item.id,
+                        is_folder: isFolder,
+                        isFolder: isFolder
+                    });
+                }
             }
+
             setRefresh(prev => prev + 1);
             setItemToDelete(null);
+            setSelectedItemIds(new Set()); // Clear selection after delete
         } catch (e) {
             console.error("Delete failed", e);
             alert("Delete failed: " + e);
@@ -567,17 +670,7 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
         }
     };
 
-    const allItems: FileItem[] = [
-        ...folders.map(f => ({ id: f.id, name: f.name, type: 'folder' as const, modified: 'Just now', is_starred: f.is_starred })),
-        ...uploadQueue.filter(q => q.status === 'pending' || q.status === 'uploading').map((q, i) => ({
-            id: `upload-${i}`,
-            name: q.name,
-            type: 'file' as const,
-            size: q.status === 'uploading' ? 'Uploading...' : 'Queued',
-            mimeType: 'application/octet-stream' // placeholder
-        })),
-        ...files.map(f => ({ id: f.id, name: f.name, type: 'file' as const, size: (f.size / 1024 / 1024).toFixed(2) + ' MB', mimeType: f.mime_type, is_starred: f.is_starred, thumbnail: f.thumbnail }))
-    ];
+
 
     function itemsSection(items: FileItem[], title: string) {
         if (items.length === 0) return null;
@@ -585,25 +678,141 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
             <div className="mb-8">
                 <h2 className="text-sm font-medium text-muted-foreground mb-4 uppercase tracking-wider">{title}</h2>
                 <div className={`grid gap-4 ${view === 'grid' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5' : 'grid-cols-1'}`}>
-                    {items.map(file => (
-                        <FileCard
-                            key={file.id}
-                            item={file}
-                            onNavigate={currentSection === 'trash' ? undefined : (id) => handleNavigate(id, file.name)}
-                            onPreview={handlePreview}
-                            onContextMenu={(e, item) => {
-                                e.preventDefault();
-                                setContextMenu({ x: e.clientX, y: e.clientY, item });
-                            }}
-                        />
-                    ))}
+                    {items.map(file => {
+                        const isSelected = selectedItemIds.has(file.id);
+                        return (
+                            <FileCard
+                                key={file.id}
+                                item={file}
+                                isSelected={isSelected}
+                                onClick={(e) => handleFileClick(e, file)}
+                                onContextMenu={(e, item) => {
+                                    e.preventDefault();
+                                    if (!selectedItemIds.has(file.id)) {
+                                        setSelectedItemIds(new Set([file.id]));
+                                    }
+                                    setContextMenu({ x: e.clientX, y: e.clientY, item });
+                                }}
+                            />
+                        );
+                    })}
                 </div>
             </div>
         );
     }
 
+    const [isDragging, setIsDragging] = useState(false);
+
+
+
+
+
+
+    // Tauri v2 Drag & Drop Implementation
+    // Tauri v2 Drag & Drop Implementation
+    useEffect(() => {
+        let unlistenDrop: () => void;
+        let unlistenEnter: () => void;
+        let unlistenLeave: () => void;
+        let isMounted = true;
+
+        async function setupDragDrop() {
+            try {
+                console.log('Setting up Tauri v2 drag listeners...');
+
+                const uEnter = await listen('tauri://drag-enter', (_event) => {
+                    if (!isMounted) return;
+                    console.log('Tauri Event: drag-enter');
+                    setIsDragging(true);
+                });
+                if (isMounted) unlistenEnter = uEnter;
+                else uEnter();
+
+                const uLeave = await listen('tauri://drag-leave', (_event) => {
+                    if (!isMounted) return;
+                    console.log('Tauri Event: drag-leave');
+                    setIsDragging(false);
+                });
+                if (isMounted) unlistenLeave = uLeave;
+                else uLeave();
+
+                const uDrop = await listen<{ paths: string[] }>('tauri://drag-drop', (event) => {
+                    if (!isMounted) return;
+                    console.log('Tauri Event: drag-drop', event);
+                    setIsDragging(false);
+
+                    let activePaths: string[] = [];
+                    // Handle potential payload variations
+                    if (Array.isArray(event.payload)) {
+                        activePaths = event.payload;
+                    } else if (event.payload && Array.isArray((event.payload as any).paths)) {
+                        activePaths = (event.payload as any).paths;
+                    }
+
+                    if (activePaths && activePaths.length > 0) {
+                        const targetFolderId = currentFolder;
+                        const newItems = activePaths.map(path => ({
+                            path,
+                            name: path.split(/[/\\]/).pop() || 'Unknown File',
+                            status: 'pending' as const,
+                            progress: 0,
+                            targetFolderId: targetFolderId
+                        }));
+                        setUploadQueue(prev => {
+                            // Deduplicate based on path if needed, but for now just appending.
+                            // The issue was multiple listeners.
+                            return [...prev, ...newItems];
+                        });
+                    }
+                });
+                if (isMounted) unlistenDrop = uDrop;
+                else uDrop();
+
+                console.log('Drag listeners set up successfully');
+            } catch (err) {
+                console.error('Failed to setup drag listeners:', err);
+            }
+        }
+
+        setupDragDrop();
+
+        return () => {
+            isMounted = false;
+            // Immediate cleanup if they exist
+            if (unlistenDrop) unlistenDrop();
+            if (unlistenEnter) unlistenEnter();
+            if (unlistenLeave) unlistenLeave();
+        };
+    }, [currentFolder]); // REMOVED uploadQueue from dependencies to prevent re-binding loops
+
     return (
-        <div className="flex h-screen bg-[#030712] text-foreground font-sans selection:bg-cyan-500/30 overflow-hidden relative">
+        <div
+            className="flex h-screen bg-[#030712] text-foreground font-sans selection:bg-cyan-500/30 overflow-hidden relative"
+        >
+
+            {/* Drag & Drop Overlay */}
+            <AnimatePresence>
+                {isDragging && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[999] bg-cyan-500/20 backdrop-blur-sm border-4 border-cyan-400 border-dashed rounded-xl m-4 flex items-center justify-center pointer-events-none"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            className="bg-[#0A0A0A] p-8 rounded-2xl border border-cyan-500/30 shadow-[0_0_50px_rgba(6,182,212,0.3)] flex flex-col items-center text-center"
+                        >
+                            <div className="w-20 h-20 bg-cyan-500/10 rounded-full flex items-center justify-center mb-6 text-cyan-400 animate-bounce">
+                                <Upload className="w-10 h-10" />
+                            </div>
+                            <h2 className="text-3xl font-bold text-white mb-2">Drop to Upload</h2>
+                            <p className="text-gray-400 text-lg">Release files to add them to your cloud</p>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Background Grid Pattern (Technical Look) */}
             <div className="absolute inset-0 pointer-events-none opacity-[0.03]"
@@ -738,11 +947,20 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                             key={i}
                             onClick={() => {
                                 setCurrentSection(item.id);
+                                setCurrentFolder(null); // Always reset to root context
+
                                 if (item.id === 'drive') {
-                                    setCurrentFolder(null); // Go to root when clicking My Drive
                                     setFolderName('My Drive');
+                                    setBreadcrumbs([{ id: null, name: 'My Drive' }]);
+                                } else if (item.id === 'recent') {
+                                    setFolderName('Recent');
+                                    setBreadcrumbs([{ id: null, name: 'Recent' }]);
+                                } else if (item.id === 'starred') {
+                                    setFolderName('Starred');
+                                    setBreadcrumbs([{ id: null, name: 'Starred' }]);
                                 } else if (item.id === 'trash') {
                                     setFolderName('Trash');
+                                    setBreadcrumbs([{ id: null, name: 'Trash' }]);
                                 }
                             }}
                             className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${currentSection === item.id
@@ -1067,7 +1285,10 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                 </div>
 
                 {/* File List */}
-                <div className="flex-1 overflow-auto px-8 pb-8 custom-scrollbar">
+                <div
+                    className="flex-1 overflow-auto px-8 pb-8 custom-scrollbar"
+                    onClick={handleBackgroundClick} // Clear selection on background click
+                >
                     {view === 'grid' ? (
                         <>
                             {itemsSection(allItems.filter(f => f.type === 'folder'), "Folders")}
@@ -1085,84 +1306,90 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
-                                    {allItems.map(item => (
-                                        <tr
-                                            key={item.id}
-                                            className="hover:bg-white/5 transition-colors group cursor-pointer"
-                                            onClick={(e) => {
-                                                if ((e.target as HTMLElement).closest('button')) return;
-                                                if (item.type === 'folder') {
-                                                    setCurrentFolder(item.id);
-                                                    setFolderName(item.name);
-                                                } else {
-                                                    handlePreview(item);
-                                                }
-                                            }}
-                                        >
-                                            <td className="px-6 py-3.5 font-medium text-gray-200 flex items-center gap-3">
-                                                <div className={`p-2 rounded-lg ${item.type === 'folder' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-white/10 text-gray-400'}`}>
-                                                    {item.type === 'folder' ? <FolderIcon className="w-4 h-4 fill-current" /> : <FileIcon className="w-4 h-4" />}
-                                                </div>
-                                                {item.name}
-                                            </td>
-                                            <td className="px-6 py-3.5 text-gray-500 font-mono text-xs">
-                                                {item.type === 'file' ? formatSize(item.size) : '-'}
-                                            </td>
-                                            <td className="px-6 py-3.5 text-gray-500 font-mono text-xs">
-                                                {item.modified ? formatDate(item.modified) : '-'}
-                                            </td>
-                                            <td className="px-6 py-3.5 text-right">
-                                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setRenameItem({ id: item.id, type: item.type, name: item.name });
-                                                            setIsRenameOpen(true);
-                                                        }}
-                                                        className="p-1.5 hover:bg-white/10 rounded text-gray-500 hover:text-white transition-colors"
-                                                        title="Rename"
-                                                    >
-                                                        <Pencil className="w-4 h-4" />
-                                                    </button>
-
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleToggleStar(item);
-                                                        }}
-                                                        className={`p-1.5 hover:bg-yellow-500/10 rounded transition-colors ${item.is_starred ? 'text-yellow-500' : 'text-gray-500 hover:text-yellow-500'}`}
-                                                        title={item.is_starred ? "Unstar" : "Star"}
-                                                    >
-                                                        <Star className={`w-4 h-4 ${item.is_starred ? 'fill-current' : ''}`} />
-                                                    </button>
-
-                                                    {item.type === 'file' && (
+                                    {allItems.map(item => {
+                                        const isSelected = selectedItemIds.has(item.id);
+                                        return (
+                                            <tr
+                                                key={item.id}
+                                                className={`transition-colors group cursor-pointer ${isSelected ? 'bg-cyan-500/10 hover:bg-cyan-500/20' : 'hover:bg-white/5'}`}
+                                                onClick={(e) => {
+                                                    if ((e.target as HTMLElement).closest('button')) return;
+                                                    handleFileClick(e, item);
+                                                }}
+                                                onContextMenu={(e) => {
+                                                    e.preventDefault();
+                                                    if (!selectedItemIds.has(item.id)) {
+                                                        // If right-clicking outside selection, clear and select this one
+                                                        setSelectedItemIds(new Set([item.id]));
+                                                    }
+                                                    setContextMenu({ x: e.clientX, y: e.clientY, item });
+                                                }}
+                                            >
+                                                <td className="px-6 py-3.5 font-medium text-gray-200 flex items-center gap-3">
+                                                    <div className={`p-2 rounded-lg ${item.type === 'folder' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-white/10 text-gray-400'}`}>
+                                                        {item.type === 'folder' ? <FolderIcon className="w-4 h-4 fill-current" /> : <FileIcon className="w-4 h-4" />}
+                                                    </div>
+                                                    {item.name}
+                                                </td>
+                                                <td className="px-6 py-3.5 text-gray-500 font-mono text-xs">
+                                                    {item.type === 'file' ? formatSize(item.size) : '-'}
+                                                </td>
+                                                <td className="px-6 py-3.5 text-gray-500 font-mono text-xs">
+                                                    {item.modified ? formatDate(item.modified) : '-'}
+                                                </td>
+                                                <td className="px-6 py-3.5 text-right">
+                                                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                handleDownload(item.id);
+                                                                setRenameItem({ id: item.id, type: item.type, name: item.name });
+                                                                setIsRenameOpen(true);
                                                             }}
                                                             className="p-1.5 hover:bg-white/10 rounded text-gray-500 hover:text-white transition-colors"
-                                                            title="Download"
+                                                            title="Rename"
                                                         >
-                                                            <Upload className="w-4 h-4 rotate-180" />
+                                                            <Pencil className="w-4 h-4" />
                                                         </button>
-                                                    )}
 
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleTrash(item.id, item.type === 'folder', item.name);
-                                                        }}
-                                                        className="p-1.5 hover:bg-red-500/10 rounded text-gray-500 hover:text-red-500 transition-colors"
-                                                        title="Delete"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleToggleStar(item);
+                                                            }}
+                                                            className={`p-1.5 hover:bg-yellow-500/10 rounded transition-colors ${item.is_starred ? 'text-yellow-500' : 'text-gray-500 hover:text-yellow-500'}`}
+                                                            title={item.is_starred ? "Unstar" : "Star"}
+                                                        >
+                                                            <Star className={`w-4 h-4 ${item.is_starred ? 'fill-current' : ''}`} />
+                                                        </button>
+
+                                                        {item.type === 'file' && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDownload(item.id);
+                                                                }}
+                                                                className="p-1.5 hover:bg-white/10 rounded text-gray-500 hover:text-white transition-colors"
+                                                                title="Download"
+                                                            >
+                                                                <Upload className="w-4 h-4 rotate-180" />
+                                                            </button>
+                                                        )}
+
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleTrash(item.id, item.type === 'folder', item.name);
+                                                            }}
+                                                            className="p-1.5 hover:bg-red-500/10 rounded text-gray-500 hover:text-red-500 transition-colors"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -1275,7 +1502,11 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                     {itemToDelete.deleteType === 'hard' ? 'Delete Permanently?' : 'Move to Trash?'}
                                 </h3>
                                 <p className="text-sm text-gray-400 mt-2">
-                                    Are you sure you want to delete <span className="font-medium text-white">{itemToDelete.name}</span>?
+                                    {itemToDelete.batchIds ? (
+                                        <>Are you sure you want to delete <span className="font-medium text-white">{itemToDelete.batchIds.length} items</span>?</>
+                                    ) : (
+                                        <>Are you sure you want to delete <span className="font-medium text-white">{itemToDelete.name}</span>?</>
+                                    )}
                                     {itemToDelete.deleteType === 'hard' && (
                                         <><br /><span className="text-red-400 font-medium">This action cannot be undone.</span></>
                                     )}
@@ -1566,7 +1797,16 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="px-2 py-1.5 border-b border-white/5 mb-1">
-                                <p className="text-xs font-medium text-gray-400 truncate max-w-[150px]">{contextMenu.item.name}</p>
+                                {selectedItemIds.has(contextMenu.item.id) && selectedItemIds.size > 1 ? (
+                                    <p className="text-xs font-medium text-gray-400 truncate max-w-[150px]">{selectedItemIds.size} items selected</p>
+                                ) : (
+                                    <>
+                                        <p className="text-xs font-medium text-gray-400 truncate max-w-[150px]">{contextMenu.item.name}</p>
+                                        {contextMenu.item.path_display && (
+                                            <p className="text-[10px] text-gray-500 mt-0.5 truncate max-w-[150px]">{contextMenu.item.path_display}</p>
+                                        )}
+                                    </>
+                                )}
                             </div>
 
                             {currentSection !== 'trash' ? (
@@ -1576,38 +1816,60 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                         className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
                                     >
                                         <Star className={`w-4 h-4 ${contextMenu.item.is_starred ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                                        {contextMenu.item.is_starred ? 'Unstar' : 'Star'}
+                                        {(selectedItemIds.has(contextMenu.item.id) && selectedItemIds.size > 1)
+                                            ? `Star ${selectedItemIds.size} items`
+                                            : (contextMenu.item.is_starred ? 'Unstar' : 'Star')}
                                     </button>
 
-                                    <button
-                                        onClick={() => {
-                                            handleRename(contextMenu.item.id, contextMenu.item.name, contextMenu.item.type === 'folder');
-                                            setContextMenu(null);
-                                        }}
-                                        className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
-                                    >
-                                        <Pencil className="w-4 h-4" />
-                                        Rename
-                                    </button>
+                                    {(!selectedItemIds.has(contextMenu.item.id) || selectedItemIds.size <= 1) && (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    handleRename(contextMenu.item.id, contextMenu.item.name, contextMenu.item.type === 'folder');
+                                                    setContextMenu(null);
+                                                }}
+                                                className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                                Rename
+                                            </button>
 
-                                    {contextMenu.item.type === 'file' && (
-                                        <button
-                                            onClick={() => { handleDownload(contextMenu.item.id); setContextMenu(null); }}
-                                            className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
-                                        >
-                                            <Upload className="w-4 h-4 rotate-180" />
-                                            Download
-                                        </button>
+                                            {contextMenu.item.type === 'file' && (
+                                                <button
+                                                    onClick={() => { handleDownload(contextMenu.item.id); setContextMenu(null); }}
+                                                    className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
+                                                >
+                                                    <Upload className="w-4 h-4 rotate-180" />
+                                                    Download
+                                                </button>
+                                            )}
+                                        </>
                                     )}
 
                                     <div className="h-px bg-white/5 my-1" />
 
                                     <button
-                                        onClick={() => { handleDelete(contextMenu.item.id, contextMenu.item.name, contextMenu.item.type === 'folder'); setContextMenu(null); }}
+                                        onClick={() => {
+                                            if (selectedItemIds.has(contextMenu.item.id) && selectedItemIds.size > 1) {
+                                                // Batch Delete
+                                                setItemToDelete({
+                                                    id: 'batch', // Dummy ID
+                                                    isFolder: false, // Mixed
+                                                    name: `${selectedItemIds.size} items`,
+                                                    deleteType: 'soft',
+                                                    batchIds: Array.from(selectedItemIds)
+                                                });
+                                            } else {
+                                                handleDelete(contextMenu.item.id, contextMenu.item.name, contextMenu.item.type === 'folder');
+                                            }
+                                            setContextMenu(null);
+                                        }}
                                         className="w-full flex items-center gap-2 px-2 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left"
                                     >
                                         <Trash2 className="w-4 h-4" />
-                                        Delete
+                                        {(selectedItemIds.has(contextMenu.item.id) && selectedItemIds.size > 1)
+                                            ? `Delete ${selectedItemIds.size} items`
+                                            : 'Delete'}
                                     </button>
                                 </>
                             ) : (
@@ -1617,14 +1879,32 @@ export default function Dashboard({ onLogout }: { onLogout: () => void }) {
                                         className="w-full flex items-center gap-2 px-2 py-2 text-sm text-green-400 hover:bg-green-500/10 rounded-lg transition-colors text-left"
                                     >
                                         <RotateCw className="w-4 h-4" />
-                                        Restore
+                                        {(selectedItemIds.has(contextMenu.item.id) && selectedItemIds.size > 1)
+                                            ? `Restore ${selectedItemIds.size} items`
+                                            : 'Restore'}
                                     </button>
                                     <button
-                                        onClick={() => { handleDeleteForever(contextMenu.item.id, contextMenu.item.type === 'folder', contextMenu.item.name); setContextMenu(null); }}
+                                        onClick={() => {
+                                            if (selectedItemIds.has(contextMenu.item.id) && selectedItemIds.size > 1) {
+                                                // Batch Delete Forever
+                                                setItemToDelete({
+                                                    id: 'batch',
+                                                    isFolder: false,
+                                                    name: `${selectedItemIds.size} items`,
+                                                    deleteType: 'hard',
+                                                    batchIds: Array.from(selectedItemIds)
+                                                });
+                                            } else {
+                                                handleDeleteForever(contextMenu.item.id, contextMenu.item.type === 'folder', contextMenu.item.name);
+                                            }
+                                            setContextMenu(null);
+                                        }}
                                         className="w-full flex items-center gap-2 px-2 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors text-left"
                                     >
                                         <Trash2 className="w-4 h-4" />
-                                        Delete Forever
+                                        {(selectedItemIds.has(contextMenu.item.id) && selectedItemIds.size > 1)
+                                            ? `Delete Forever ${selectedItemIds.size} items`
+                                            : 'Delete Forever'}
                                     </button>
                                 </>
                             )}

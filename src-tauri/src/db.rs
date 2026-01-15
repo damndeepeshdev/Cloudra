@@ -131,6 +131,15 @@ impl Database {
         store.files.iter().find(|f| f.id == id).cloned()
     }
 
+    pub fn lookup_folder_name(&self, id: &str) -> Option<String> {
+        let store = self.store.lock().unwrap();
+        store
+            .folders
+            .iter()
+            .find(|f| f.id == id)
+            .map(|f| f.name.clone())
+    }
+
     pub fn add_file(
         &self,
         folder_id: Option<String>,

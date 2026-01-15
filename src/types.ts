@@ -8,6 +8,7 @@ export interface FileMetadata {
     created_at: number;
     is_starred?: boolean;
     thumbnail?: string;
+    path_display?: string;
 }
 
 export interface Folder {
@@ -16,4 +17,5 @@ export interface Folder {
     name: string;
     created_at: number;
     is_starred?: boolean;
+    path_display?: string;
 }
