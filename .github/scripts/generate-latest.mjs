@@ -42,6 +42,9 @@ async function main() {
     const assetMap = new Map(); // filename -> download_url
 
     // First pass: Find all signatures and download them
+    console.log(`Found ${assets.length} assets in release:`);
+    assets.forEach(a => console.log(` - ${a.name}`));
+
     for (const asset of assets) {
         if (asset.name.endsWith('.sig')) {
             console.log(`Found signature: ${asset.name}`);
