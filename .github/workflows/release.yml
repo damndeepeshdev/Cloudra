@@ -82,6 +82,18 @@ jobs:
              npm run tauri signer sign -- -k "$TAURI_PRIVATE_KEY" --password "$TAURI_KEY_PASSWORD" src-tauri/target/release/bundle/msi/*.msi 2>/dev/null || true
           fi
 
+      - name: Upload Signatures
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+             gh release upload ${{ github.ref_name }} src-tauri/target/release/bundle/dmg/*.sig
+          elif [ "$RUNNER_OS" == "Linux" ]; then
+             gh release upload ${{ github.ref_name }} src-tauri/target/release/bundle/appimage/*.sig src-tauri/target/release/bundle/deb/*.sig src-tauri/target/release/bundle/rpm/*.sig 2>/dev/null || true
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+             gh release upload ${{ github.ref_name }} src-tauri/target/release/bundle/nsis/*.sig src-tauri/target/release/bundle/msi/*.sig 2>/dev/null || true
+          fi
+
   publish-latest-json:
     needs: release
     runs-on: ubuntu-latest
