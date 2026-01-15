@@ -59,6 +59,29 @@ jobs:
           releaseDraft: false
           prerelease: false
 
+      - name: Sign Artifacts
+        shell: bash
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: |
+          # Sign DMG on macOS
+          if [ "$RUNNER_OS" == "macOS" ]; then
+             echo "Signing macOS artifacts..."
+             npm run tauri signer sign -- -k "$TAURI_PRIVATE_KEY" --password "$TAURI_KEY_PASSWORD" src-tauri/target/release/bundle/dmg/*.dmg
+          # Sign AppImage/Deb/Rpm on Linux
+          elif [ "$RUNNER_OS" == "Linux" ]; then
+             echo "Signing Linux artifacts..."
+             npm run tauri signer sign -- -k "$TAURI_PRIVATE_KEY" --password "$TAURI_KEY_PASSWORD" src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null || true
+             npm run tauri signer sign -- -k "$TAURI_PRIVATE_KEY" --password "$TAURI_KEY_PASSWORD" src-tauri/target/release/bundle/deb/*.deb 2>/dev/null || true
+             npm run tauri signer sign -- -k "$TAURI_PRIVATE_KEY" --password "$TAURI_KEY_PASSWORD" src-tauri/target/release/bundle/rpm/*.rpm 2>/dev/null || true
+          # Sign Exe/Msi on Windows
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+             echo "Signing Windows artifacts..."
+             npm run tauri signer sign -- -k "$TAURI_PRIVATE_KEY" --password "$TAURI_KEY_PASSWORD" src-tauri/target/release/bundle/nsis/*.exe 2>/dev/null || true
+             npm run tauri signer sign -- -k "$TAURI_PRIVATE_KEY" --password "$TAURI_KEY_PASSWORD" src-tauri/target/release/bundle/msi/*.msi 2>/dev/null || true
+          fi
+
   publish-latest-json:
     needs: release
     runs-on: ubuntu-latest
