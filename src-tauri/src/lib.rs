@@ -1,6 +1,7 @@
-use grammers_client::types::{Downloadable, LoginToken, Media, PasswordToken};
+use grammers_client::types::{Downloadable, InputMessage, LoginToken, Media, PasswordToken};
 use grammers_client::{Client, Config, InitParams, SignInError};
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::{engine::general_purpose, Engine as _};
 use mime_guess;
@@ -8,11 +9,15 @@ use mime_guess;
 use grammers_session::Session;
 use grammers_tl_types as tl;
 use rand::Rng;
+use std::collections::{HashMap, VecDeque};
+use std::io::Write; // Standard Sync Write for Zip
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State, Window};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use zip::write::SimpleFileOptions;
+
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::Semaphore;
 
@@ -786,13 +791,15 @@ async fn download_file_core(
     file_id: String,
     save_path: String,
     state: State<'_, AppState>,
+    window: Window,
 ) -> Result<String, String> {
     println!("Downloading file: id={}, save_path={}", file_id, save_path);
     let mut client_guard = state.client.lock().await;
     let client = client_guard.as_mut().ok_or("Client not initialized")?;
 
-    let file = state.db.get_file(&file_id).ok_or("File not found")?;
-    let message_id = file.message_id;
+    let file_meta = state.db.get_file(&file_id).ok_or("File not found")?;
+    let message_id = file_meta.message_id;
+    let total_size = file_meta.size;
     let chat = client.get_me().await.map_err(|e| e.to_string())?;
 
     let messages = client
@@ -807,25 +814,53 @@ async fn download_file_core(
     };
 
     if let Some(media) = message.media() {
-        match media {
-            Media::Photo(p) => {
-                let d = Downloadable::Media(Media::Photo(p));
-                client
-                    .download_media(&d, &save_path)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                Ok("Download complete".to_string())
-            }
-            Media::Document(d) => {
-                let d = Downloadable::Media(Media::Document(d));
-                client
-                    .download_media(&d, &save_path)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                Ok("Download complete".to_string())
-            }
-            _ => Err("Unsupported media type".to_string()),
+        let downloadable = match media {
+            Media::Photo(p) => Downloadable::Media(Media::Photo(p)),
+            Media::Document(d) => Downloadable::Media(Media::Document(d)),
+            _ => return Err("Unsupported media type".to_string()),
+        };
+
+        let mut file_out = tokio::fs::File::create(&save_path)
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut stream = client.iter_download(&downloadable);
+        let mut downloaded_size: i64 = 0;
+
+        #[derive(Clone, serde::Serialize)]
+        struct DownloadProgress {
+            id: String,
+            progress: u32,
         }
+
+        while let Some(chunk) = stream.next().await.map_err(|e| e.to_string())? {
+            file_out
+                .write_all(&chunk)
+                .await
+                .map_err(|e| e.to_string())?;
+            downloaded_size += chunk.len() as i64;
+
+            if total_size > 0 {
+                let progress = (downloaded_size as f64 / total_size as f64 * 100.0) as u32;
+                let _ = window.emit(
+                    "download-progress",
+                    DownloadProgress {
+                        id: file_id.clone(),
+                        progress,
+                    },
+                );
+            }
+        }
+
+        // Ensure 100% is sent
+        let _ = window.emit(
+            "download-progress",
+            DownloadProgress {
+                id: file_id.clone(),
+                progress: 100,
+            },
+        );
+
+        Ok("Download complete".to_string())
     } else {
         Err("No media found in message".to_string())
     }
@@ -957,6 +992,497 @@ async fn get_storage_usage(state: State<'_, AppState>) -> Result<String, String>
     Ok(formatted)
 }
 
+#[tauri::command]
+async fn get_folder_stats(state: State<'_, AppState>, id: String) -> Result<(i64, i32), String> {
+    Ok(state.db.get_folder_stats(&id))
+}
+
+#[tauri::command]
+async fn update_folder_metadata(
+    state: State<'_, AppState>,
+    id: String,
+    color: Option<String>,
+    icon: Option<String>,
+    gradient: Option<String>,
+    cover_image: Option<String>,
+    emoji: Option<String>,
+    pattern: Option<String>,
+    show_badges: Option<bool>,
+    tags: Option<Vec<String>>,
+    description: Option<String>,
+    view_mode: Option<String>,
+) -> Result<(), String> {
+    println!(
+        "Updating folder metadata: id={}, color={:?}, icon={:?}, gradient={:?}, emoji={:?}",
+        id, color, icon, gradient, emoji
+    );
+    let success = state.db.update_folder_metadata(
+        &id,
+        color,
+        icon,
+        gradient,
+        cover_image,
+        emoji,
+        pattern,
+        show_badges,
+        tags,
+        description,
+        view_mode,
+    );
+    if success {
+        println!("Update successful for id={}", id);
+        Ok(())
+    } else {
+        println!("Update failed: Folder not found for id={}", id);
+        Err("Folder not found".to_string())
+    }
+}
+
+#[tauri::command]
+async fn backup_metadata(state: State<'_, AppState>) -> Result<String, String> {
+    println!("Starting metadata backup...");
+    let mut client_guard = state.client.lock().await;
+    let client = client_guard.as_mut().ok_or("Not logged in")?.clone();
+
+    // 1. Get metadata path
+    let app_dir = state
+        .app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let metadata_path = app_dir.join("metadata.json");
+
+    if !metadata_path.exists() {
+        return Err("No metadata file found to backup".to_string());
+    }
+
+    // 2. Upload file
+    // For small files like metadata.json, we can use a simpler upload or just re-use the manual logic.
+    // Since client.upload_file is convenient but we want to tag it...
+    // Let's use the file upload helper if available or standard part upload.
+    // We'll trust client.upload_file for simplicity if available, else manual.
+    // grammers-client has `upload_file` which returns an UploadedFile.
+
+    let uploaded_file = client
+        .upload_file(&metadata_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Send to "Saved Messages" (Me)
+    let me = client.get_me().await.map_err(|e| e.to_string())?;
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let caption = format!("#paperfold_metadata_backup\nTimestamp: {}", timestamp);
+
+    client
+        .send_message(&me, InputMessage::text(&caption).file(uploaded_file))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    println!("Backup uploaded successfully.");
+    Ok(format!("Backup successful! Timestamp: {}", timestamp))
+}
+
+#[tauri::command]
+async fn restore_metadata(state: State<'_, AppState>) -> Result<String, String> {
+    println!("Restoring metadata from backup...");
+    let mut client_guard = state.client.lock().await;
+    let client = client_guard.as_mut().ok_or("Not logged in")?.clone();
+
+    let me = client.get_me().await.map_err(|e| e.to_string())?;
+
+    // 1. Search for latest backup
+    let mut messages = client.iter_messages(&me).limit(50); // Check last 50 messages
+
+    let mut backup_msg = None;
+
+    while let Some(msg) = messages.next().await.map_err(|e| e.to_string())? {
+        if msg.text().contains("#paperfold_metadata_backup") {
+            backup_msg = Some(msg);
+            break;
+        }
+    }
+
+    if let Some(msg) = backup_msg {
+        // 2. Download it
+        let app_dir = state
+            .app_handle
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?;
+        let metadata_path = app_dir.join("metadata.json");
+
+        // Backup current one locally
+        if metadata_path.exists() {
+            let backup_local = app_dir.join("metadata.json.old");
+            let _ = tokio::fs::rename(&metadata_path, &backup_local).await;
+        }
+
+        // Fix: Use media() instead of message for download
+        let media = msg.media().ok_or("No media in backup message")?;
+        let downloadable = Downloadable::Media(media);
+
+        let _ = client
+            .download_media(&downloadable, &metadata_path)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 3. Reload DB (Hot Reload)
+        state.db.reload();
+
+        Ok("Backup restored successfully. Your dashboard will refresh.".to_string())
+    } else {
+        Err("No backup found in Saved Messages.".to_string())
+    }
+}
+
+#[tauri::command]
+async fn sync_files(state: State<'_, AppState>) -> Result<String, String> {
+    println!("Syncing files with Telegram...");
+    let mut client_guard = state.client.lock().await;
+    let client = client_guard.as_mut().ok_or("Not logged in")?.clone();
+
+    let me = client.get_me().await.map_err(|e| e.to_string())?;
+
+    // 1. Get all local files
+    let all_files = state.db.get_all_files();
+    if all_files.is_empty() {
+        return Ok("No files to sync.".to_string());
+    }
+
+    println!("Checking {} files...", all_files.len());
+
+    // 2. Batch check availability
+    let mut missing_ids = Vec::new();
+    let batch_size = 50;
+
+    for chunk in all_files.chunks(batch_size) {
+        let message_ids: Vec<i32> = chunk.iter().map(|f| f.message_id).collect();
+
+        // get_messages_by_id returns specific messages.
+        // If a message is deleted, it might return None or an empty message depending on API.
+        // grammers: returns Vec<Option<Message>> usually, or filtered list?
+        // Let's check the return type docs/usage.
+        // In preview_file we used get_messages_by_id and it returned a list.
+        // If I request IDs [1, 2, 3] and 2 is deleted, does it return [Some, None, Some] or [Msg1, Msg3]?
+        // grammers-client `get_messages_by_id` returns `Result<Vec<Option<Message>>>`.
+
+        let messages = client
+            .get_messages_by_id(&me, &message_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // We iterate input IDs and result messages in parallel?
+        // Docs say: "The returned list will have the same length as the input IDs."
+
+        for (i, msg_opt) in messages.iter().enumerate() {
+            let is_missing = match msg_opt {
+                Some(msg) => {
+                    // Check if empty or media missing?
+                    // Safe to assume if it exists it's fine, unless "Empty" type.
+                    // For now, if Some(msg), check if it has media if we expect it.
+                    // But just existence logic:
+                    msg.media().is_none() // If no media, handle as "content deleted" for our file app?
+                                          // Actually, text messages don't have media. Our files MUST have media.
+                                          // So if media is missing, it's effectively a broken link for us.
+                }
+                None => true,
+            };
+
+            if is_missing {
+                missing_ids.push(chunk[i].id.clone());
+            }
+        }
+    }
+
+    let removed_count = missing_ids.len();
+    if removed_count > 0 {
+        println!("Found {} missing files. Removing...", removed_count);
+        state.db.delete_files_by_ids(&missing_ids);
+        Ok(format!(
+            "Sync complete. Removed {} deleted files.",
+            removed_count
+        ))
+    } else {
+        Ok("Sync complete. All files are up to date.".to_string())
+    }
+}
+
+#[tauri::command]
+async fn download_folder(
+    state: State<'_, AppState>,
+    folder_id: String,
+    base_path: String,
+    window: Window,
+) -> Result<String, String> {
+    let mut client_guard = state.client.lock().await;
+    let client = client_guard.as_mut().ok_or("Not logged in")?.clone();
+
+    // Drop guard so we can await async calls
+    drop(client_guard);
+
+    let all_files = state.db.get_all_files();
+    let all_folders = state.db.get_all_folders();
+
+    // Build Maps for O(1) lookup
+    let mut file_map: HashMap<String, Vec<db::FileMetadata>> = HashMap::new();
+    for f in all_files {
+        file_map
+            .entry(f.folder_id.clone().unwrap_or_default())
+            .or_default()
+            .push(f);
+    }
+
+    let mut folder_map: HashMap<String, Vec<db::Folder>> = HashMap::new();
+    for f in &all_folders {
+        folder_map
+            .entry(f.parent_id.clone().unwrap_or_default())
+            .or_default()
+            .push(f.clone());
+    }
+
+    let root_folder = all_folders
+        .iter()
+        .find(|f| f.id == folder_id)
+        .ok_or("Folder not found")?;
+
+    // Queue: (folder_id, fs_path_to_create)
+    let mut queue = VecDeque::new();
+    let root_fs_path = std::path::Path::new(&base_path).join(&root_folder.name);
+    queue.push_back((folder_id.clone(), root_fs_path));
+
+    while let Some((curr_id, curr_path)) = queue.pop_front() {
+        // 1. Create directory
+        tokio::fs::create_dir_all(&curr_path)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 2. Download files in this folder
+        if let Some(files) = file_map.get(&curr_id) {
+            for f in files {
+                // Fetch valid message/media
+                let chat = client.get_me().await.map_err(|e| e.to_string())?;
+                let messages = client
+                    .get_messages_by_id(&chat, &[f.message_id])
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+                if let Some(Some(msg)) = messages.first() {
+                    if let Some(media) = msg.media() {
+                        let downloadable = match media {
+                            Media::Photo(p) => Downloadable::Media(Media::Photo(p)),
+                            Media::Document(d) => Downloadable::Media(Media::Document(d)),
+                            _ => continue,
+                        };
+
+                        let final_path = curr_path.join(&f.name);
+                        let part_path = curr_path.join(format!("{}.part", f.name));
+
+                        // Emit progress
+                        let _ = window.emit(
+                            "download-progress",
+                            serde_json::json!({
+                                "id": f.id,
+                                "progress": 50.0, // Indeterminate / In Progress
+                                "status": format!("Downloading {}...", f.name)
+                            }),
+                        );
+
+                        match client
+                            .download_media(&downloadable, part_path.clone())
+                            .await
+                        {
+                            Ok(_) => {
+                                // Rename part to final
+                                let _ = std::fs::rename(&part_path, &final_path);
+                            }
+                            Err(e) => {
+                                // Clean up part file if failed
+                                let _ = std::fs::remove_file(&part_path);
+                                return Err(e.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Queue subfolders
+        if let Some(subs) = folder_map.get(&curr_id) {
+            for sub in subs {
+                queue.push_back((sub.id.clone(), curr_path.join(&sub.name)));
+            }
+        }
+    }
+
+    Ok("Folder downloaded successfully.".to_string())
+}
+
+#[tauri::command]
+async fn download_all(
+    target_dir: String,
+    state: State<'_, AppState>,
+    window: Window,
+) -> Result<(), String> {
+    let mut client_guard = state.client.lock().await;
+    let client = client_guard.as_mut().ok_or("Not logged in")?.clone();
+    drop(client_guard);
+
+    let all_files = state.db.get_all_files();
+    let all_folders = state.db.get_all_folders();
+
+    // Mapping ID -> Path
+    let mut folder_map = HashMap::new();
+    for f in &all_folders {
+        folder_map.insert(f.id.clone(), f.clone());
+    }
+
+    struct FileEntry {
+        // id field removed as unused
+        name: String,
+        relative_path: std::path::PathBuf,
+        size: i64,
+        message_id: i32,
+    }
+
+    let mut entries = Vec::new();
+    for file in all_files {
+        if file.trashed {
+            continue;
+        }
+
+        // Check if any parent is trashed
+        let mut valid = true;
+        let mut temp_parts = Vec::new();
+        let mut curr = file.folder_id.clone();
+
+        while let Some(pid) = curr {
+            if let Some(f) = folder_map.get(&pid) {
+                if f.trashed {
+                    valid = false;
+                    break;
+                }
+                temp_parts.push(f.name.clone());
+                curr = f.parent_id.clone();
+            } else {
+                curr = None;
+            }
+        }
+
+        if valid {
+            let mut path = std::path::PathBuf::new();
+            temp_parts.reverse();
+            for p in temp_parts {
+                path.push(p);
+            }
+            path.push(&file.name);
+
+            entries.push(FileEntry {
+                // id: file.id,
+                name: file.name,
+                relative_path: path,
+                size: file.size,
+                message_id: file.message_id,
+            });
+        }
+    }
+
+    // Packet Logic (Limit 1.9GB)
+    const LIMIT: u64 = 1_900_000_000;
+
+    let mut packets: Vec<Vec<FileEntry>> = Vec::new();
+    let mut current_packet = Vec::new();
+    let mut current_size = 0;
+
+    for entry in entries {
+        if current_size + (entry.size as u64) > LIMIT && !current_packet.is_empty() {
+            packets.push(current_packet);
+            current_packet = Vec::new();
+            current_size = 0;
+        }
+        current_size += entry.size as u64;
+        current_packet.push(entry);
+    }
+    if !current_packet.is_empty() {
+        packets.push(current_packet);
+    }
+
+    // Zipping
+    let total_packets = packets.len();
+    for (i, packet) in packets.into_iter().enumerate() {
+        let zip_name = if total_packets > 1 {
+            format!("Paperfold_Backup_Part_{}.zip", i + 1)
+        } else {
+            "Paperfold_Backup.zip".to_string()
+        };
+        let final_path = Path::new(&target_dir).join(&zip_name);
+        let part_path = Path::new(&target_dir).join(format!("{}.part", zip_name));
+
+        let file = std::fs::File::create(&part_path).map_err(|e| e.to_string())?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o755);
+
+        let packet_size = packet.len();
+
+        for (j, entry) in packet.into_iter().enumerate() {
+            let _ = window.emit(
+                "download-all-progress",
+                serde_json::json!({
+                    "packet": i + 1,
+                    "total_packets": total_packets,
+                    "file_index": j + 1,
+                    "total_files": packet_size,
+                    "status": format!("Downloading {}...", entry.name)
+                }),
+            );
+
+            let temp_name = format!("temp_dl_{}", uuid::Uuid::new_v4());
+            let temp_path = std::env::temp_dir().join(&temp_name);
+            let temp_path_str = temp_path.to_string_lossy().to_string();
+
+            // Fetch message/media
+            if let Ok(chat) = client.get_me().await {
+                if let Ok(messages) = client.get_messages_by_id(&chat, &[entry.message_id]).await {
+                    if let Some(Some(msg)) = messages.first() {
+                        if let Some(media) = msg.media() {
+                            let downloadable = match media {
+                                Media::Photo(p) => Downloadable::Media(Media::Photo(p)),
+                                Media::Document(d) => Downloadable::Media(Media::Document(d)),
+                                _ => continue,
+                            };
+
+                            if client
+                                .download_media(&downloadable, &temp_path_str)
+                                .await
+                                .is_ok()
+                            {
+                                if let Ok(content) = std::fs::read(&temp_path) {
+                                    let path_str =
+                                        entry.relative_path.to_string_lossy().to_string();
+                                    let _ = zip.start_file(path_str, options);
+                                    let _ = zip.write_all(&content);
+                                }
+                                let _ = std::fs::remove_file(&temp_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let _ = zip.finish().map_err(|e| e.to_string())?;
+
+        // Rename part to final
+        std::fs::rename(&part_path, &final_path).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -997,12 +1523,19 @@ pub fn run() {
             fetch_trash,
             empty_trash,
             rename_item,
+            update_folder_metadata,
+            get_folder_stats,
             get_storage_usage,
             preview_file,
             get_current_user,
             toggle_star,
             fetch_starred,
-            search_items
+            search_items,
+            backup_metadata,
+            restore_metadata,
+            sync_files,
+            download_folder,
+            download_all
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

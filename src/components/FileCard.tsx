@@ -1,4 +1,9 @@
-import { File as FileIcon, Folder, Star, FileText, Music, Video, Image as ImageIcon, Play } from 'lucide-react';
+import {
+    Folder, File as FileIcon, Star, FileText, Music, Video, Image as ImageIcon, Play,
+    Briefcase, Heart, Code, Globe, User, Users, Shield, Lock, Settings, Archive,
+    Cloud, Database, Smartphone, Monitor, Book, Coffee, Gift, Tag, Flag
+} from 'lucide-react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { motion } from 'framer-motion';
 
 export interface FileItem {
@@ -6,11 +11,21 @@ export interface FileItem {
     name: string;
     type: 'file' | 'folder';
     size?: string;
+    sizeBytes?: number;
     modified?: string;
     thumbnail?: string;
     mimeType?: string;
     is_starred?: boolean;
     path_display?: string;
+    color?: string;
+    icon?: string;
+    gradient?: string;
+    cover_image?: string;
+    emoji?: string;
+    pattern?: string;
+    show_badges?: boolean;
+    tags?: string[];
+    description?: string;
 }
 
 interface FileCardProps {
@@ -20,9 +35,33 @@ interface FileCardProps {
     onPreview?: (item: FileItem) => void;
     onContextMenu?: (e: React.MouseEvent, item: FileItem) => void;
     onClick?: (e: React.MouseEvent, item: FileItem) => void;
+    downloadProgress?: number;
 }
 
-export default function FileCard({ item, isSelected, onNavigate, onPreview, onContextMenu, onClick }: FileCardProps) {
+export const FOLDER_ICONS: Record<string, any> = {
+    default: Folder,
+    briefcase: Briefcase,
+    heart: Heart,
+    code: Code,
+    globe: Globe,
+    user: User,
+    users: Users,
+    shield: Shield,
+    lock: Lock,
+    settings: Settings,
+    archive: Archive,
+    cloud: Cloud,
+    database: Database,
+    smartphone: Smartphone,
+    monitor: Monitor,
+    book: Book,
+    coffee: Coffee,
+    gift: Gift,
+    tag: Tag,
+    flag: Flag
+};
+
+export default function FileCard({ item, isSelected, onNavigate, onPreview, onContextMenu, onClick, downloadProgress }: FileCardProps) {
     const getFileIcon = () => {
         const name = item.name.toLowerCase();
         const mime = (item.mimeType || '').toLowerCase();
@@ -43,6 +82,8 @@ export default function FileCard({ item, isSelected, onNavigate, onPreview, onCo
     };
 
     const isVideo = (item.mimeType || '').startsWith('video/') || /\.(mp4|mov|avi|wmv|flv|webm|mkv)$/i.test(item.name);
+
+    const FolderIconStart = item.icon && FOLDER_ICONS[item.icon] ? FOLDER_ICONS[item.icon] : Folder;
 
     return (
         <motion.div
@@ -70,37 +111,116 @@ export default function FileCard({ item, isSelected, onNavigate, onPreview, onCo
             }}
         >
             {/* Thumbnail / Icon Container - Main Visual */}
-            <div className={`w-full aspect-square rounded-2xl shadow-sm relative overflow-hidden flex items-center justify-center transition-all duration-300 ${item.thumbnail
-                ? 'bg-black/50'
-                : item.type === 'folder'
-                    ? 'bg-cyan-500/10 border border-cyan-500/20'
-                    : 'bg-white/5 border border-white/5'
-                }`}>
-                {item.type === 'folder' ? (
-                    <Folder className="w-1/3 h-1/3 fill-current text-cyan-400 opacity-90" />
-                ) : item.thumbnail ? (
-                    <div className="relative w-full h-full">
-                        <img
-                            src={`data:image/jpeg;base64,${item.thumbnail}`}
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                        />
-                        {isVideo && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center border border-white/20 shadow-xl">
-                                    <Play className="w-4 h-4 text-white fill-current ml-0.5" />
-                                </div>
-                            </div>
+            <div
+                className={`w-full aspect-square rounded-2xl shadow-sm relative overflow-hidden flex items-center justify-center transition-all duration-300 ${item.thumbnail
+                    ? 'bg-black/50'
+                    : item.type === 'folder'
+                        ? '' // Transparent for folders
+                        : 'bg-white/5 border border-white/5'
+                    }`}
+            >
+                {/* Folder Content */}
+                {item.type === 'folder' && (
+                    <div className="relative w-full h-full flex items-center justify-center">
+                        {/* Cover Image or Gradient Background */}
+                        <div
+                            className="absolute inset-0 rounded-xl overflow-hidden transition-all duration-300"
+                            style={{
+                                background: item.gradient || item.color || '#22d3ee',
+                                opacity: item.cover_image ? 1 : (item.gradient ? 0.9 : 0.2)
+                            }}
+                        >
+                            {item.cover_image && (
+                                <img src={convertFileSrc(item.cover_image)} alt="cover" className="w-full h-full object-cover" />
+                            )}
+
+                        </div>
+
+                        {/* Pattern Overlay - Separate layer to handle opacity independently */}
+                        {item.pattern && (
+                            <div
+                                className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none"
+                                style={{
+                                    backgroundImage: item.pattern,
+                                    backgroundSize: (item.pattern.includes('linear-gradient') && item.pattern.includes('to right')) || item.pattern.includes('90deg') ? '20px 20px' : '10px 10px',
+                                    opacity: 0.15 // Subtle but visible overlay
+                                }}
+                            />
                         )}
+
+                        {/* Icon / Emoji */}
+                        <div className="relative z-10 transform transition-transform duration-300 group-hover:scale-110">
+                            {item.emoji ? (
+                                <span className="text-4xl filter drop-shadow-lg">{item.emoji}</span>
+                            ) : (
+                                !item.cover_image && (
+                                    <FolderIconStart
+                                        className={`w-12 h-12 ${item.gradient ? 'text-white drop-shadow-md' : ''}`}
+                                        style={{
+                                            color: item.gradient ? 'white' : (item.color || '#22d3ee'),
+                                            fill: item.gradient ? 'rgba(255,255,255,0.2)' : 'currentColor',
+                                            fillOpacity: item.gradient ? 1 : 0.2
+                                        }}
+                                    />
+                                )
+                            )}
+                        </div>
                     </div>
-                ) : (
-                    getFileIcon()
+                )}
+                {item.type === 'folder' && item.show_badges && (
+                    <div className="absolute bottom-2 px-2 py-0.5 bg-black/60 rounded-full border border-white/10 backdrop-blur-sm">
+                        <span className="text-[10px] font-mono text-gray-300">Folder</span>
+                    </div>
+                )}
+                {/* Render Tags */}
+                {item.tags && item.tags.length > 0 && (
+                    <div className="absolute top-2 right-2 flex gap-1 flex-wrap justify-end max-w-[80%]">
+                        {item.tags.map((tag, idx) => (
+                            <div key={idx} className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_5px_rgba(34,211,238,0.5)]" title={tag} />
+                        ))}
+                    </div>
+                )}
+
+                {item.type !== 'folder' && (
+                    item.thumbnail ? (
+                        <div className="relative w-full h-full">
+                            <img
+                                src={`data:image/jpeg;base64,${item.thumbnail}`}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                            />
+                            {isVideo && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                    <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center border border-white/20 shadow-xl">
+                                        <Play className="w-4 h-4 text-white fill-current ml-0.5" />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        getFileIcon()
+                    )
                 )}
 
                 {/* Star Overlay Indicator */}
                 {item.is_starred && (
                     <div className="absolute top-2 right-2 text-yellow-400">
                         <Star className="w-4 h-4 fill-current drop-shadow-md" />
+                    </div>
+                )}
+
+
+                {/* Download Progress Overlay */}
+                {downloadProgress !== undefined && (
+                    <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-4 z-20 backdrop-blur-sm rounded-2xl">
+                        <span className="text-xl font-bold text-cyan-400 mb-2">{downloadProgress}%</span>
+                        <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-cyan-500 transition-all duration-300 ease-out"
+                                style={{ width: `${downloadProgress}%` }}
+                            />
+                        </div>
+                        <span className="text-[10px] text-gray-400 mt-2 font-mono uppercase tracking-wider">Downloading</span>
                     </div>
                 )}
             </div>

@@ -17,6 +17,28 @@ pub struct Folder {
     pub trashed_at: Option<i64>,
     #[serde(default)]
     pub is_starred: bool,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub gradient: Option<String>,
+    #[serde(default)]
+    pub cover_image: Option<String>,
+    #[serde(default)]
+    pub emoji: Option<String>,
+    #[serde(default)]
+    pub pattern: Option<String>,
+    #[serde(default)]
+    pub show_badges: bool, // e.g. "5 Items"
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub view_mode: Option<String>, // 'grid' | 'list'
+    #[serde(default)]
+    pub last_modified: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +93,61 @@ impl Database {
         serde_json::to_writer(writer, &*self.store.lock().unwrap()).unwrap();
     }
 
+    // Helper to get a unique name (e.g. "Folder (1)")
+    // This needs to be called inside a lock, or we assume single-threaded access to store.
+    // Since we lock in public methods, we should make this a private method taking &store.
+    fn get_unique_name(
+        &self,
+        store: &DataStore,
+        parent_id: Option<&String>,
+        base_name: &str,
+        is_folder: bool,
+    ) -> String {
+        // Base case: check if it exists
+        let exists = if is_folder {
+            store
+                .folders
+                .iter()
+                .any(|f| f.parent_id.as_ref() == parent_id && f.name == base_name && !f.trashed)
+        } else {
+            store
+                .files
+                .iter()
+                .any(|f| f.folder_id.as_ref() == parent_id && f.name == base_name && !f.trashed)
+        };
+
+        if !exists {
+            return base_name.to_string();
+        }
+
+        // It exists, try (1), (2), etc.
+        let mut i = 1;
+        loop {
+            let candidate = format!("{} ({})", base_name, i);
+            let exists =
+                if is_folder {
+                    store.folders.iter().any(|f| {
+                        f.parent_id.as_ref() == parent_id && f.name == candidate && !f.trashed
+                    })
+                } else {
+                    store.files.iter().any(|f| {
+                        f.folder_id.as_ref() == parent_id && f.name == candidate && !f.trashed
+                    })
+                };
+
+            if !exists {
+                return candidate;
+            }
+            i += 1;
+        }
+    }
+
     pub fn create_folder(&self, name: &str, parent_id: Option<String>) -> String {
+        let mut store = self.store.lock().unwrap();
+
+        // Ensure unique name
+        let final_name = self.get_unique_name(&store, parent_id.as_ref(), name, true);
+
         let id = Uuid::new_v4().to_string();
         // timestamp
         let now = std::time::SystemTime::now()
@@ -82,17 +158,26 @@ impl Database {
         let folder = Folder {
             id: id.clone(),
             parent_id,
-            name: name.to_string(),
+            name: final_name,
             created_at: now,
             trashed: false,
             trashed_at: None,
             is_starred: false,
+            color: None,
+            icon: None,
+            gradient: None,
+            cover_image: None,
+            emoji: None,
+            pattern: None,
+            show_badges: false,
+            tags: None,
+            description: None,
+            view_mode: None,
+            last_modified: now,
         };
 
-        {
-            let mut store = self.store.lock().unwrap();
-            store.folders.push(folder);
-        }
+        store.folders.push(folder);
+        drop(store);
         self.save();
         id
     }
@@ -149,6 +234,11 @@ impl Database {
         message_id: i32,
         thumbnail: Option<String>,
     ) -> FileMetadata {
+        let mut store = self.store.lock().unwrap();
+
+        // Ensure unique name
+        let final_name = self.get_unique_name(&store, folder_id.as_ref(), &name, false);
+
         let id = Uuid::new_v4().to_string();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -158,7 +248,7 @@ impl Database {
         let file = FileMetadata {
             id: id.clone(),
             folder_id,
-            name,
+            name: final_name,
             size,
             mime_type,
             message_id,
@@ -169,10 +259,8 @@ impl Database {
             thumbnail,
         };
 
-        {
-            let mut store = self.store.lock().unwrap();
-            store.files.push(file.clone());
-        }
+        store.files.push(file.clone());
+        drop(store);
         self.save();
         file
     }
@@ -277,6 +365,103 @@ impl Database {
         let mut store = self.store.lock().unwrap();
         if let Some(folder) = store.folders.iter_mut().find(|f| f.id == id) {
             folder.name = new_name.to_string();
+            drop(store);
+            self.save();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn get_folder_stats(&self, folder_id: &str) -> (i64, i32) {
+        let store = self.store.lock().unwrap();
+        self.calculate_stats_recursive(&store, folder_id)
+    }
+
+    fn calculate_stats_recursive(&self, store: &DataStore, folder_id: &str) -> (i64, i32) {
+        let mut total_size: i64 = 0;
+        let mut total_count: i32 = 0;
+
+        // Count files in this folder
+        let files_in_folder: Vec<&FileMetadata> = store
+            .files
+            .iter()
+            .filter(|f| f.folder_id.as_deref() == Some(folder_id) && !f.trashed)
+            .collect();
+
+        for file in files_in_folder {
+            total_size += file.size;
+            total_count += 1;
+        }
+
+        // Recursively count subfolders
+        let subfolders: Vec<&Folder> = store
+            .folders
+            .iter()
+            .filter(|f| f.parent_id.as_deref() == Some(folder_id) && !f.trashed)
+            .collect();
+
+        for folder in subfolders {
+            let (child_size, child_count) = self.calculate_stats_recursive(store, &folder.id);
+            total_size += child_size;
+            total_count += child_count; // Should we count the folder itself as 1 item?
+                                        // Usually "5 items" includes subfolders as items.
+            total_count += 1;
+        }
+
+        (total_size, total_count)
+    }
+
+    pub fn update_folder_metadata(
+        &self,
+        id: &str,
+        color: Option<String>,
+        icon: Option<String>,
+        gradient: Option<String>,
+        cover_image: Option<String>,
+        emoji: Option<String>,
+        pattern: Option<String>,
+        show_badges: Option<bool>,
+        tags: Option<Vec<String>>,
+        description: Option<String>,
+        // view_mode update logic or separate? Let's add it.
+        view_mode: Option<String>,
+    ) -> bool {
+        let mut store = self.store.lock().unwrap();
+        if let Some(folder) = store.folders.iter_mut().find(|f| f.id == id) {
+            if let Some(c) = color {
+                folder.color = if c.is_empty() { None } else { Some(c) };
+            }
+            if let Some(i) = icon {
+                folder.icon = if i.is_empty() { None } else { Some(i) };
+            }
+            if let Some(g) = gradient {
+                folder.gradient = if g.is_empty() { None } else { Some(g) };
+            }
+            if let Some(c) = cover_image {
+                folder.cover_image = if c.is_empty() { None } else { Some(c) };
+            }
+            if let Some(e) = emoji {
+                folder.emoji = if e.is_empty() { None } else { Some(e) };
+            }
+            if let Some(p) = pattern {
+                folder.pattern = if p.is_empty() { None } else { Some(p) };
+            }
+            if let Some(s) = show_badges {
+                folder.show_badges = s;
+            }
+            if let Some(t) = tags {
+                folder.tags = Some(t);
+            }
+            if let Some(d) = description {
+                folder.description = Some(d);
+            }
+            if let Some(v) = view_mode {
+                folder.view_mode = Some(v);
+            }
+
+            folder.last_modified = chrono::Utc::now().timestamp();
+
             drop(store);
             self.save();
             true
@@ -397,7 +582,13 @@ impl Database {
         let folders = store
             .folders
             .iter()
-            .filter(|f| !f.trashed && f.name.to_lowercase().contains(&query_lower))
+            .filter(|f| {
+                !f.trashed
+                    && (f.name.to_lowercase().contains(&query_lower)
+                        || f.tags.as_ref().map_or(false, |tags| {
+                            tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                        }))
+            })
             .cloned()
             .collect();
 
@@ -420,5 +611,39 @@ impl Database {
             .filter(|f| !f.trashed)
             .map(|f| f.size)
             .sum()
+    }
+    pub fn get_all_files(&self) -> Vec<FileMetadata> {
+        let store = self.store.lock().unwrap();
+        store.files.clone()
+    }
+
+    pub fn get_all_folders(&self) -> Vec<Folder> {
+        let store = self.store.lock().unwrap();
+        store.folders.clone()
+    }
+
+    pub fn delete_files_by_ids(&self, ids: &[String]) {
+        {
+            let mut store = self.store.lock().unwrap();
+            store.files.retain(|f| !ids.contains(&f.id));
+        }
+        self.save();
+    }
+
+    pub fn reload(&self) {
+        let mut store = self.store.lock().unwrap();
+        if self.db_path.exists() {
+            if let Ok(file) = File::open(&self.db_path) {
+                let reader = BufReader::new(file);
+                if let Ok(new_store) = serde_json::from_reader(reader) {
+                    *store = new_store;
+                    println!("Database reloaded from disk.");
+                } else {
+                    eprintln!("Failed to parse metadata.json during reload.");
+                }
+            } else {
+                eprintln!("Failed to open metadata.json during reload.");
+            }
+        }
     }
 }

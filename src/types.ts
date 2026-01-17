@@ -18,4 +18,15 @@ export interface Folder {
     created_at: number;
     is_starred?: boolean;
     path_display?: string;
+    color?: string;
+    icon?: string;
+    gradient?: string;
+    cover_image?: string;
+    emoji?: string;
+    pattern?: string;
+    show_badges?: boolean;
+    tags?: string[];
+    description?: string;
+    view_mode?: 'grid' | 'list';
+    last_modified?: number;
 }

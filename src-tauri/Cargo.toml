@@ -1,6 +1,6 @@
 [package]
 name = "paperfold"
-version = "0.1.2"
+version = "0.1.4"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -35,3 +35,5 @@ dotenv = "0.15.0"
 grammers-tl-types = "0.7"
 rand = "0.8"
 mime_guess = "2.0"
+chrono = "0.4.43"
+zip = "2"
